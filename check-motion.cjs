@@ -40,7 +40,7 @@ const vm = require('node:vm');
   assert.equal(queued.size, 0);
 
   // Exercise the actual application playback function: the last stage gets its own dwell.
-  const app = fs.readFileSync('dist/app.js', 'utf8');
+  const app = fs.readFileSync('src/app/app.js', 'utf8');
   const playFunction = app.slice(app.indexOf('function play(){'), app.indexOf('function finish()'));
   let interval, stops = 0, finishes = 0;
   const states = [];

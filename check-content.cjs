@@ -1,6 +1,6 @@
 const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict');
-const scope={};vm.runInNewContext(fs.readFileSync('dist/data.js','utf8')+';this.lessons=LESSONS;this.sources=SOURCES;this.groups=GROUPS;',scope);
-vm.runInNewContext(fs.readFileSync('dist/mechanisms.js','utf8')+';this.details=MECHANISM_DETAILS;this.readings=CSAPP_READINGS;',scope);
+const scope={};vm.runInNewContext(fs.readFileSync("content/data.js",'utf8')+';this.lessons=LESSONS;this.sources=SOURCES;this.groups=GROUPS;',scope);
+vm.runInNewContext(fs.readFileSync("content/mechanisms.js",'utf8')+';this.details=MECHANISM_DETAILS;this.readings=CSAPP_READINGS;',scope);
 const lessons=scope.lessons,ids=new Set(lessons.map(l=>l.id));
 // 单主题版本：只保留 TCP 一课，其余内容全部移除。
 assert.equal(lessons.length,1,'this build must contain exactly one lesson');

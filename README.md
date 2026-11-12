@@ -32,7 +32,7 @@
 ## 运行
 
 ```bash
-npm start        # http://127.0.0.1:8091/（端口 8091，避免与完整版 8090 冲突）
+npm start        # 服务项目根目录；页面入口 http://127.0.0.1:8091/src/app/（端口 8091，避免与完整版 8090 冲突）
 ```
 
 ## 校验
@@ -43,10 +43,11 @@ node .openai/smoke-runtime.cjs   # jsdom 运行时冒烟（需先启动 npm star
 node .openai/shot-tcp.cjs        # 截图（puppeteer-core + 本机 Chrome）
 ```
 
-## 结构说明（相对完整版的主要差异）
+## 结构说明（M0 源文件归位后）
 
-- `dist/data.js`：只保留 TCP 一课；GROUPS 只有一个「网络协议」分组；SOURCES 只保留 RFC 9293 与 CSAPP。
-- `dist/mechanisms.js`：机制详解只保留 TCP 条目及引用的 CSAPP 阅读条目。
-- `dist/index.html`：移除三部分导航、搜索、筛选、知识图谱页签；标题与页脚改为单主题文案。
-- `dist/app.js`：进度、标题、详解对单主题适配；关联主题为空时隐藏对应区块；知识图谱代码保留但不会渲染。
-- 端口使用 8091。
+- `content/data.js`：演示数据，只保留 TCP 一课；GROUPS 只有一个「网络协议」分组；SOURCES 只保留 RFC 9293 与 CSAPP。
+- `content/mechanisms.js`：机制详解只保留 TCP 条目及引用的 CSAPP 阅读条目。
+- `src/app/index.html`：页面入口；移除三部分导航、搜索、筛选、知识图谱页签；标题与页脚为单主题文案。
+- `src/app/app.js`：UI 逻辑（进度、标题、详解对单主题适配；关联主题为空时隐藏对应区块）。
+- `dist/`：只含构建产物 `isokit.js`（由 `npm run build` 生成）与 `licenses/`。
+- 端口使用 8091；index.html 以根绝对路径引用 `/content/*` 与 `/dist/isokit.js`，本地与 GitHub Pages 装配目录使用相同布局。

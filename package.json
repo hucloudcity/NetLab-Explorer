@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "start": "python -m http.server 8091 -d dist",
+    "start": "python -m http.server 8091",
     "build": "node scripts/build.mjs",
     "check": "node check-content.cjs && node check-isokit.cjs && node check-motion.cjs"
   },
