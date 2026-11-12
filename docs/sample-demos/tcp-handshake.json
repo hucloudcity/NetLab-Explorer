@@ -1,0 +1,167 @@
+{
+  "$schema-note": "样例数据 · TCP 三次握手（docs/demo-event-model.md 的实例化验证）。",
+  "id": "tcp-handshake",
+  "title": "TCP 三次握手",
+  "protocol": "tcp",
+  "view": { "kind": "network" },
+  "topology": {
+    "layout": { "view": "network", "note": "复用现站等距场景：笔记本→路由器→云→服务器" },
+    "participants": [
+      { "id": "laptop", "label": "笔记本电脑", "role": "host", "kind": "laptop",
+        "address": { "ip": "192.168.1.20", "port": 49152 } },
+      { "id": "gateway", "label": "家庭路由器", "role": "gateway", "kind": "router",
+        "address": { "ip": "192.168.1.1" } },
+      { "id": "isp", "label": "互联网", "role": "router", "kind": "cloud" },
+      { "id": "server", "label": "Web 服务器", "role": "server", "kind": "server",
+        "address": { "ip": "203.0.113.10", "port": 80 } }
+    ],
+    "domains": [
+      { "id": "lan-home", "label": "家庭局域网", "members": ["laptop", "gateway"] }
+    ],
+    "links": [
+      { "from": "laptop", "to": "gateway", "medium": "wired" },
+      { "from": "gateway", "to": "isp", "medium": "wired" },
+      { "from": "isp", "to": "server", "medium": "wired" }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "main",
+      "label": "正常握手",
+      "initialState": {
+        "laptop": { "tcp-state": [{ "peer": "server", "to": "CLOSED" }] },
+        "server": { "tcp-state": [{ "peer": "*", "to": "LISTEN" }] }
+      },
+      "steps": [
+        {
+          "id": "syn",
+          "title": "① 客户端发出 SYN",
+          "description": "客户端选择初始序列号 ISN=1000，发送 SYN 报文，进入 SYN_SENT。SYN 消耗一个序列号空间。",
+          "events": [
+            {
+              "id": "e-syn",
+              "kind": "unicast",
+              "from": "laptop",
+              "to": { "kind": "device", "id": "server" },
+              "payload": {
+                "proto": "TCP", "summary": "SYN: 49152 → 80",
+                "size": 66, "cat": "hand",
+                "fields": { "srcPort": 49152, "dstPort": 80, "flags": ["SYN"], "seq": 1000, "ack": null }
+              },
+              "dependsOn": []
+            }
+          ],
+          "stateDeltas": [
+            { "id": "d1", "device": "laptop", "afterEvent": "e-syn",
+              "changes": [{ "table": "tcp-state", "op": "set",
+                "entry": { "peer": "server", "from": "CLOSED", "to": "SYN_SENT" } }] }
+          ],
+          "traceRow": { "time": "0.000", "src": "192.168.1.20:49152", "dst": "203.0.113.10:80",
+            "proto": "TCP", "info": "SYN: seq=1000", "size": 66, "cat": "hand", "eventRef": "e-syn" }
+        },
+        {
+          "id": "syn-ack",
+          "title": "② 服务端返回 SYN+ACK",
+          "description": "服务端为该连接分配半连接，选择 ISN=5000，确认号为 1001（客户端期望收到的下一个字节），进入 SYN_RCVD；回送 SYN+ACK 后自身进入 SYN_RCVD 等待。",
+          "events": [
+            {
+              "id": "e-synack",
+              "kind": "unicast",
+              "from": "server",
+              "to": { "kind": "device", "id": "laptop" },
+              "payload": {
+                "proto": "TCP", "summary": "SYN+ACK: 80 → 49152",
+                "size": 66, "cat": "hand",
+                "fields": { "srcPort": 80, "dstPort": 49152, "flags": ["SYN", "ACK"], "seq": 5000, "ack": 1001 }
+              },
+              "dependsOn": []
+            }
+          ],
+          "stateDeltas": [
+            { "id": "d2", "device": "server", "afterEvent": "e-synack",
+              "changes": [{ "table": "tcp-state", "op": "set",
+                "entry": { "peer": "laptop", "from": "LISTEN", "to": "SYN_RCVD" } }] }
+          ],
+          "traceRow": { "time": "0.058", "src": "203.0.113.10:80", "dst": "192.168.1.20:49152",
+            "proto": "TCP", "info": "SYN+ACK: seq=5000 ack=1001", "size": 66, "cat": "hand", "eventRef": "e-synack" }
+        },
+        {
+          "id": "ack",
+          "title": "③ 客户端返回 ACK，连接建立",
+          "description": "客户端确认服务端 ISN，发送 ACK（确认号 5001），进入 ESTABLISHED。服务端收到 ACK 后同样进入 ESTABLISHED。双方可开始传输数据。",
+          "events": [
+            {
+              "id": "e-ack",
+              "kind": "unicast",
+              "from": "laptop",
+              "to": { "kind": "device", "id": "server" },
+              "payload": {
+                "proto": "TCP", "summary": "ACK: 49152 → 80",
+                "size": 60, "cat": "hand",
+                "fields": { "srcPort": 49152, "dstPort": 80, "flags": ["ACK"], "seq": 1001, "ack": 5001 }
+              },
+              "dependsOn": []
+            }
+          ],
+          "stateDeltas": [
+            { "id": "d3", "device": "laptop", "afterEvent": "e-ack",
+              "changes": [{ "table": "tcp-state", "op": "set",
+                "entry": { "peer": "server", "from": "SYN_SENT", "to": "ESTABLISHED" } }] },
+            { "id": "d4", "device": "server", "afterEvent": "e-ack",
+              "changes": [{ "table": "tcp-state", "op": "set",
+                "entry": { "peer": "laptop", "from": "SYN_RCVD", "to": "ESTABLISHED" } }] }
+          ],
+          "traceRow": { "time": "0.116", "src": "192.168.1.20:49152", "dst": "203.0.113.10:80",
+            "proto": "TCP", "info": "ACK: seq=1001 ack=5001", "size": 60, "cat": "hand", "eventRef": "e-ack" }
+        }
+      ]
+    },
+    {
+      "id": "fault-syn-lost",
+      "label": "SYN 报文丢失",
+      "initialState": { "laptop": { "tcp-state": [{ "peer": "server", "to": "CLOSED" }] },
+                        "server": { "tcp-state": [{ "peer": "*", "to": "LISTEN" }] } },
+      "steps": [
+        {
+          "id": "syn-lost",
+          "title": "SYN 在网络中丢失",
+          "description": "SYN 报文在网络中被丢弃，服务端从未收到，连接不会建立。",
+          "events": [
+            { "id": "e-send", "kind": "unicast", "from": "laptop",
+              "to": { "kind": "device", "id": "isp" },
+              "payload": { "proto": "TCP", "summary": "SYN: 49152 → 80", "size": 66, "cat": "hand",
+                "fields": { "flags": ["SYN"], "seq": 1000 } }, "dependsOn": [] },
+            { "id": "e-drop", "kind": "drop", "from": "isp",
+              "to": { "kind": "device", "id": "isp" },
+              "payload": null, "dependsOn": ["e-send"], "note": "拥塞丢弃，服务端保持 LISTEN" }
+          ],
+          "stateDeltas": [
+            { "id": "d1", "device": "laptop", "afterEvent": "e-send",
+              "changes": [{ "table": "tcp-state", "op": "set",
+                "entry": { "peer": "server", "from": "CLOSED", "to": "SYN_SENT" } }] }
+          ],
+          "traceRow": { "time": "0.000", "src": "192.168.1.20:49152", "dst": "203.0.113.10:80",
+            "proto": "TCP", "info": "SYN（丢失）", "size": 66, "cat": "hand", "lost": true, "eventRef": "e-send" }
+        },
+        {
+          "id": "retrans",
+          "title": "超时重传 SYN",
+          "description": "客户端 SYN 定时器超时（1s 起步指数退避），重传相同序列号的 SYN，服务端这次收到并按正常流程完成握手。",
+          "events": [
+            { "id": "e-timeout", "kind": "process", "from": "laptop",
+              "to": { "kind": "device", "id": "laptop" },
+              "payload": null, "dependsOn": [], "note": "syn 定时器超时" },
+            { "id": "e-retry", "kind": "unicast", "from": "laptop",
+              "to": { "kind": "device", "id": "server" },
+              "payload": { "proto": "TCP", "summary": "SYN（重传）: 49152 → 80", "size": 66, "cat": "hand",
+                "fields": { "flags": ["SYN"], "seq": 1000 } }, "dependsOn": ["e-timeout"] }
+          ],
+          "stateDeltas": [],
+          "traceRow": { "time": "1.002", "src": "192.168.1.20:49152", "dst": "203.0.113.10:80",
+            "proto": "TCP", "info": "SYN 重传: seq=1000", "size": 66, "cat": "hand", "eventRef": "e-retry" }
+        }
+      ]
+    }
+  ],
+  "knowledgeRefs-": "反向关系说明：本演示被哪些知识点引用由 knowledge.demoRefs 登记（NET-04-01 TCP、NET-04-12 三次握手），demo 侧不重复存储。"
+}

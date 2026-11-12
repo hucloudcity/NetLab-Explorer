@@ -1,0 +1,188 @@
+{
+  "$schema-note": "样例数据 · DNS 域名解析。验证 5 设备多跳链、递归位语义（末次查询关闭 RD）、通用状态表 dns-cache、缓存命中变体。",
+  "id": "dns-resolution",
+  "title": "DNS 域名解析",
+  "protocol": "dns",
+  "view": { "kind": "network" },
+  "topology": {
+    "layout": { "view": "network", "note": "终端 → 本地递归服务器 → 根 → 顶级域 → 权威服务器（教材经典五跳链）" },
+    "participants": [
+      { "id": "laptop", "label": "用户终端", "role": "host", "kind": "laptop",
+        "address": { "ip": "192.168.1.20" } },
+      { "id": "local-dns", "label": "本地 DNS 服务器（递归）", "role": "resolver", "kind": "server",
+        "address": { "ip": "192.168.1.1", "domain": "resolver.local" } },
+      { "id": "root", "label": "根域名服务器", "role": "server", "kind": "server",
+        "address": { "domain": "." } },
+      { "id": "tld", "label": ".example 顶级域服务器", "role": "server", "kind": "server",
+        "address": { "domain": ".example" } },
+      { "id": "auth", "label": "example.com 权威服务器", "role": "server", "kind": "server",
+        "address": { "domain": "example.com" } }
+    ],
+    "domains": [
+      { "id": "lan-user", "label": "用户局域网", "members": ["laptop", "local-dns"] }
+    ],
+    "links": [
+      { "from": "laptop", "to": "local-dns" },
+      { "from": "local-dns", "to": "root", "medium": "virtual" },
+      { "from": "local-dns", "to": "tld", "medium": "virtual" },
+      { "from": "local-dns", "to": "auth", "medium": "virtual" }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "recursive-iterate",
+      "label": "递归查询 + 迭代解析（缓存全未命中）",
+      "initialState": {
+        "local-dns": { "dns-cache": [] }
+      },
+      "steps": [
+        {
+          "id": "client-query",
+          "title": "① 终端 → 本地 DNS（递归查询）",
+          "description": "用户程序查询 www.example.com 的 A 记录，设置 RD=1（期望递归）。递归查询的含义：本地服务器承诺替客户端把解析做完。",
+          "events": [
+            { "id": "e-q1", "kind": "unicast", "from": "laptop",
+              "to": { "kind": "device", "id": "local-dns" },
+              "payload": { "proto": "DNS", "summary": "Query: www.example.com A?",
+                "size": 74, "cat": "query",
+                "fields": { "qname": "www.example.com", "qtype": "A", "rd": 1, "opcode": "QUERY" } },
+              "dependsOn": [] }
+          ],
+          "stateDeltas": [],
+          "traceRow": { "time": "0.000", "src": "192.168.1.20", "dst": "192.168.1.1",
+            "proto": "DNS", "info": "A? www.example.com (RD=1)", "size": 74, "cat": "query", "eventRef": "e-q1" }
+        },
+        {
+          "id": "cache-miss",
+          "title": "② 本地服务器查缓存（未命中）",
+          "description": "缓存无此记录 → 必须发起迭代查询。注意：不是每个查询都会走到根——缓存命中时会直接返回，这正是下一步对比的场景。",
+          "events": [
+            { "id": "e-miss", "kind": "process", "from": "local-dns",
+              "to": { "kind": "device", "id": "local-dns" }, "payload": null,
+              "dependsOn": ["e-q1"], "note": "缓存未命中，开始迭代" }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "ask-root",
+          "title": "③ 本地 → 根服务器（迭代）",
+          "description": "迭代查询 RD=0：问的是'帮我指路'而非'帮我办完'。根服务器不解析 example.com，只返回 .example 顶级域服务器的推荐。",
+          "events": [
+            { "id": "e-q2", "kind": "unicast", "from": "local-dns",
+              "to": { "kind": "device", "id": "root" },
+              "payload": { "proto": "DNS", "summary": "Query → 根: www.example.com A?",
+                "size": 74, "cat": "query",
+                "fields": { "qname": "www.example.com", "qtype": "A", "rd": 0 } },
+              "dependsOn": ["e-miss"] }
+          ],
+          "stateDeltas": [],
+          "traceRow": { "time": "0.012", "src": "192.168.1.1", "dst": "根服务器",
+            "proto": "DNS", "info": "A? www.example.com (迭代)", "size": 74, "cat": "query", "eventRef": "e-q2" }
+        },
+        {
+          "id": "root-referral",
+          "title": "④ 根返回顶级域推荐",
+          "events": [
+            { "id": "e-a2", "kind": "unicast", "from": "root",
+              "to": { "kind": "device", "id": "local-dns" },
+              "payload": { "proto": "DNS", "summary": "Referral → .example NS",
+                "size": 200, "cat": "response",
+                "fields": { "answers": 0, "authority": ".example NS", "ra": 0 } },
+              "dependsOn": ["e-q2"] }
+          ],
+          "stateDeltas": [],
+          "traceRow": { "time": "0.038", "src": "根服务器", "dst": "192.168.1.1",
+            "proto": "DNS", "info": "Referral: .example 服务器", "size": 200, "cat": "response", "eventRef": "e-a2" }
+        },
+        {
+          "id": "ask-tld-and-auth",
+          "title": "⑤ 逐级迭代：顶级域 → 权威服务器",
+          "description": "本地服务器继续向 .example 服务器查询（得到 example.com 权威服务器推荐），再向权威服务器查询（得到最终 A 记录）。两跳都是迭代。",
+          "events": [
+            { "id": "e-q3", "kind": "unicast", "from": "local-dns",
+              "to": { "kind": "device", "id": "tld" },
+              "payload": { "proto": "DNS", "summary": "Query → .example: www.example.com A?",
+                "size": 74, "cat": "query", "fields": { "qtype": "A", "rd": 0 } },
+              "dependsOn": ["e-a2"] },
+            { "id": "e-a3", "kind": "unicast", "from": "tld",
+              "to": { "kind": "device", "id": "local-dns" },
+              "payload": { "proto": "DNS", "summary": "Referral → example.com NS",
+                "size": 180, "cat": "response", "fields": { "authority": "example.com NS" } },
+              "dependsOn": ["e-q3"] },
+            { "id": "e-q4", "kind": "unicast", "from": "local-dns",
+              "to": { "kind": "device", "id": "auth" },
+              "payload": { "proto": "DNS", "summary": "Query → 权威: www.example.com A?",
+                "size": 74, "cat": "query", "fields": { "qtype": "A", "rd": 0 } },
+              "dependsOn": ["e-a3"] },
+            { "id": "e-a4", "kind": "unicast", "from": "auth",
+              "to": { "kind": "device", "id": "local-dns" },
+              "payload": { "proto": "DNS", "summary": "Answer: www.example.com A 203.0.113.99",
+                "size": 90, "cat": "response",
+                "fields": { "answers": [{ "name": "www.example.com", "type": "A", "rdata": "203.0.113.99", "ttl": 300 }] } },
+              "dependsOn": ["e-q4"] }
+          ],
+          "stateDeltas": [
+            { "id": "d-cache1", "device": "local-dns", "afterEvent": "e-a4",
+              "changes": [{ "table": "dns-cache", "op": "upsert",
+                "entry": { "name": "www.example.com", "type": "A", "rdata": "203.0.113.99", "ttl": 300 } }] }
+          ],
+          "traceRow": { "time": "0.086", "src": "example.com 权威", "dst": "192.168.1.1",
+            "proto": "DNS", "info": "A 203.0.113.99 (TTL 300)", "size": 90, "cat": "response", "eventRef": "e-a4" }
+        },
+        {
+          "id": "answer-client",
+          "title": "⑥ 本地服务器把结果返回终端",
+          "description": "解析完成后，本地服务器把 A 记录返回给客户端（RA=1，表示本服务器支持递归）。客户端拿到 IP 后才能发起 TCP/QUIC 连接——DNS 解析结果不等于连接已建立。",
+          "events": [
+            { "id": "e-answer", "kind": "unicast", "from": "local-dns",
+              "to": { "kind": "device", "id": "laptop" },
+              "payload": { "proto": "DNS", "summary": "Response: www.example.com A 203.0.113.99",
+                "size": 90, "cat": "response",
+                "fields": { "answers": [{ "name": "www.example.com", "type": "A", "rdata": "203.0.113.99" }], "ra": 1 } },
+              "dependsOn": ["e-a4"] }
+          ],
+          "stateDeltas": [],
+          "traceRow": { "time": "0.102", "src": "192.168.1.1", "dst": "192.168.1.20",
+            "proto": "DNS", "info": "www.example.com → 203.0.113.99", "size": 90, "cat": "response", "eventRef": "e-answer" }
+        }
+      ]
+    },
+    {
+      "id": "cache-hit",
+      "label": "本地缓存命中（对比场景）",
+      "initialState": {
+        "local-dns": { "dns-cache": [{ "name": "www.example.com", "type": "A", "rdata": "203.0.113.99", "ttl": 300 }] }
+      },
+      "steps": [
+        {
+          "id": "hit",
+          "title": "① 查询命中，直接应答",
+          "description": "同样的查询，本地服务器缓存命中，不访问根/顶级域/权威任何一台——DNS 查询不等于一定会访问根域名服务器。",
+          "events": [
+            { "id": "e-q", "kind": "unicast", "from": "laptop",
+              "to": { "kind": "device", "id": "local-dns" },
+              "payload": { "proto": "DNS", "summary": "Query: www.example.com A?", "size": 74, "cat": "query",
+                "fields": { "qname": "www.example.com", "qtype": "A", "rd": 1 } },
+              "dependsOn": [] },
+            { "id": "e-hit", "kind": "process", "from": "local-dns",
+              "to": { "kind": "device", "id": "local-dns" }, "payload": null,
+              "dependsOn": ["e-q"], "note": "缓存命中，TTL 剩余 215s" },
+            { "id": "e-ans", "kind": "unicast", "from": "local-dns",
+              "to": { "kind": "device", "id": "laptop" },
+              "payload": { "proto": "DNS", "summary": "Response（缓存）: A 203.0.113.99", "size": 90, "cat": "response",
+                "fields": { "answers": [{ "name": "www.example.com", "type": "A", "rdata": "203.0.113.99" }] } },
+              "dependsOn": ["e-hit"] }
+          ],
+          "stateDeltas": [
+            { "id": "d1", "device": "local-dns", "afterEvent": "e-hit",
+              "changes": [{ "table": "dns-cache", "op": "upsert",
+                "entry": { "name": "www.example.com", "type": "A", "rdata": "203.0.113.99", "ttl": 215 } }] }
+          ],
+          "traceRow": { "time": "0.004", "src": "192.168.1.1", "dst": "192.168.1.20",
+            "proto": "DNS", "info": "缓存命中 → 203.0.113.99", "size": 90, "cat": "response", "eventRef": "e-ans" }
+        }
+      ]
+    }
+  ]
+}

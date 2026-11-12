@@ -1,0 +1,89 @@
+# NetLab Explorer 迁移方案（旧项目 → 新数据模型）
+
+> 版本：V1.0（2026-11-12）。执行须待第三阶段审查通过后启动；本阶段只设计不实施。
+> 前置阅读：`docs/architecture-analysis.md`、`docs/data-model-design.md`、`docs/demo-event-model.md`。
+
+---
+
+## 一、源文件位置确认（用户要求的核实项，已查证）
+
+**结论：`dist/app.js` 是正式源文件，不是构建产物**——但这个位置具有误导性：
+
+- `scripts/build.mjs` 只构建一条链：`src/isokit-renderer.jsx` → `dist/isokit.js`（SVG 渲染器 bundle）。
+- `dist/app.js`、`dist/data.js`、`dist/mechanisms.js`、`dist/index.html`、`dist/styles.css` 等**没有被任何构建步骤生成**，它们是手工维护、被 `index.html` 以 `<script src>` 直接加载的源文件。历史上多轮功能改造都是直接编辑它们（这正是它们"活着"的原因）。
+- **风险**：任何人运行 `npm run build` 不会破坏它们（好事），但路径暗示"生成物"，新人容易误改 `src/` 却看不到效果，或反过来误以为 dist 可整体重生成。
+- **处置（M0）**：把手工维护源文件迁到 `content/` 与 `src/app/`（见下），`dist/` 回归纯产物目录。迁移本身是纯移动 + 改 index.html 引用路径 + 改 npm start 校验路径，不动逻辑。
+
+## 二、迁移前基线
+
+- Git 已初始化（当前 HEAD 见 `git log`），工作区要求干净后才开始每个里程碑。
+- 每个里程碑独立提交、可独立回滚；回滚命令 `git revert <commit>`（不用 reset --hard）。
+- 回归护栏（每里程碑跑一次）：
+  1. `npm run check`（内容契约 + IsoKit 静态回归 + 动效回归）；
+  2. `.openai/smoke-runtime.cjs` jsdom 冒烟（14 行表格、四类图例、丢失徽标、runtime errors: none）；
+  3. puppeteer 截图对比（`.openai/shot-tcp.cjs`），迁移引擎前后**逐像素对比**主视图。
+
+## 三、里程碑
+
+### M0 — 源文件归位（半天级，纯移动）
+- `dist/app.js|data.js|mechanisms.js|index.html|styles.css|scene-motion.css|isokit.css` → `src/app/` + `content/`（data/mechanisms 归 content）。
+- `index.html` 资源引用路径更新；`npm start`、校验脚本、冒烟脚本路径同步更新。
+- **验收**：页面行为与迁移前逐像素一致；`npm run check` 三绿。
+
+### M1 — 类型与校验器落地（1 天级）
+- `src/types/{knowledge,source,demo}.ts`（按 data-model-design.md / demo-event-model.md 定稿的类型）。
+- `src/schemas/*.ts`：Zod schema（**package.json 显式声明 zod 直接依赖**，遵守 ADR-001；esbuild 构建 TS 文件无需配置）。
+- `scripts/validate-content.mjs`：tsc --noEmit + 结构校验 + 跨引用校验（见 validation-rules.md），挂进 `npm run check`。
+- **验收**：三份样例 JSON 全部通过校验；故意破坏一条引用时校验器报错定位准确。
+
+### M2 — TCP 数据迁移到新模型（1~2 天级）
+- `content/demos/tcp-handshake.json`：以样例为底，并入现站全部 14 步主流程数据（net.main 14 行 → traceRow、stepNotes → description、fault 四次挥手 → fault 场景）。
+- knowledge/source 台账初始化：`sources.json`（TCP 相关 4 条来源）+ 15 个首批知识点中的 TCP 系列。
+- 旧 `data.js LESSONS.tcp` / `mechanisms.js.tcp` 保持可读（适配层），**页面输出不变**。
+- **验收**：冒烟 + 截图全过；新旧数据字段映射表归档（docs/）。
+
+### M3 — 演示引擎替换 app.js 中的播放控制（1 天级）
+- 新 `src/engine/scheduler.mjs`：波次推导（拓扑分层）、fold 状态机（前进/后退/重置/重播/跳转，见 demo-event-model.md §4.2），纯函数 + jsdom 单测。
+- app.js 的 `renderStep/播放器` 改为消费引擎输出；删除内嵌的步骤推进逻辑。
+- **验收**：单步后退状态正确回滚（fold 重放）；速度调节/自动播放行为不变；截图逐像素对比。
+
+### M4 — 渲染器支持任意拓扑（1~2 天级）
+- `src/isokit-model.mjs` 的 `NETWORK_POSITIONS` 硬编码 4 节点 → 按 `participants.length` 与 `layout` 自动布局（保留 4 节点默认布局参数，现有 TCP 视觉零变化）。
+- 广播扇出动画（多弧）、多播弧、drop 终止符为新增绘制分支。
+- 校验脚本 `nodes.length===4` 断言放宽为与数据一致。
+- **验收**：TCP 页面视觉回归零差异；ARP/DNS 样例在引擎中可被播放（内部验证，不必上线）。
+
+### M5 — ARP / DNS 演示上线（后续阶段，本方案不含）
+- 依赖 M1–M4 全部完成；内容准确性按 RFC 826/1034/1035 复核（来源台账 checkedAt 流程）。
+
+## 四、旧代码影响清单（迁移后需要修改什么）
+
+| 位置 | 现状 | 迁移动作 |
+|---|---|---|
+| `data.js LESSONS` | 演示脚本与知识混在一起 | 拆出 → `content/demos/*.json`；knowledge 字段迁入 knowledge 数据 |
+| `mechanisms.js` | 知识正文寄生（绑死演示） | `sections` → KnowledgePoint 六问字段；`sources/readings` → SourceRef |
+| `app.js renderTrace/renderDetail` | 直接读 LESSONS/net | 改读引擎 + 新模型（M3）；`CATS` 图例映射进 Packet.cat 枚举 |
+| `app.js` 播放控制（started/step/timer） | 内嵌逻辑 | → `src/engine/scheduler.mjs`（M3） |
+| `isokit-model.mjs NETWORK_POSITIONS/topologyLinks` | 硬编码 4 节点 | 参数化（M4） |
+| `check-content.cjs` | 针对旧 schema 的 18 阶段断言 | 保留旧断言到 M2 结束，之后替换为新校验器 |
+| `index.html` 资源路径 | dist/ 直载 | M0 调整 |
+
+**不需要修改**：esbuild 构建、React 渲染器入口、styles.css 主题系统、CI（pages.yml）、`?v=` 缓存机制（沿用）。
+
+## 五、回归保证（旧页面功能不回归）
+
+1. **像素级截图对比**：迁移引擎（M3）与渲染器（M4）前后各跑一次全步骤截图 diff，任何非预期像素变化即为回归。
+2. **行为断言**：smoke-runtime 的既有断言（表格行数/图例/丢失徽标/待机态）不动，作为行为契约。
+3. **双数据灰度**：M2 期间新旧数据并存（适配层桥接），切换前用 `npm run check` 同时校验两套；页面切新数据后旧数据只读保留一个提交，再删。
+4. **每里程碑一个提交**：出问题 `git revert` 单点回滚，不做混合回退。
+
+## 六、尚未解决的模型开放问题（诚实清单）
+
+1. **广播扇出的视觉方案未定**：域内 3+ 设备时弧线如何排布（等距视图弧线拥挤），M4 实现时定稿，属渲染问题不阻塞模型。
+2. **stepNotes 长文本的归属**：现站逐步详解有时跨事件叙述；迁入 Step.description 单字段可能丢粒度，若不够，扩展 `Step.notes: {eventId?, text}[]`（已预留，先不加）。
+3. **并行事件的表格表达**：一条 traceRow 只对应一个主事件；同一波多事件时表格行合并规则未定（DNS 样例采取"每步一行主事件"策略，够用先不加字段）。
+4. **过程事件 e-ignore-c 的可见性**：ARP 里"主机 C 收到但忽略"是否画动画、还是仅状态面板可见，UI 决策未定（数据已完整表达，渲染时可静默）。
+5. **`net.alternate` 备用时间线**（现站 SACK 交替数据）：对应"场景内时间线变体"，模型暂用多 scenario 表达；若 14 步里仅个别行交替，需加 `traceRow.alternatives`，待迁移 TCP 全量数据时验证（M2 的一个明确任务）。
+6. **tsc/esbuild 的 TS 校验**只覆盖新代码；旧 app.js 无类型，迁移完成前保持 jsdom 冒烟兜底。
+
+以上问题均**不阻塞第三阶段审查**；前四项在 M4 决策，后两项在 M2 验证。

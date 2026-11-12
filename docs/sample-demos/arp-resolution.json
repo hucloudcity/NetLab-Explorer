@@ -1,0 +1,165 @@
+{
+  "$schema-note": "样例数据 · ARP 地址解析。验证广播域推导、多设备接收、单一响应者、ARP Cache 状态变化，以及跨网段时解析网关 MAC。",
+  "id": "arp-resolution",
+  "title": "ARP 地址解析",
+  "protocol": "arp",
+  "view": { "kind": "network" },
+  "topology": {
+    "layout": { "view": "network", "note": "一台交换机连接三台主机：lan-a 广播域" },
+    "participants": [
+      { "id": "pc1", "label": "主机 A（发起方）", "role": "host", "kind": "generic",
+        "address": { "ip": "10.0.0.11", "mac": "AA:11" } },
+      { "id": "pc2", "label": "主机 B（目标）", "role": "host", "kind": "generic",
+        "address": { "ip": "10.0.0.12", "mac": "BB:22" } },
+      { "id": "pc3", "label": "主机 C（旁观者）", "role": "host", "kind": "generic",
+        "address": { "ip": "10.0.0.13", "mac": "CC:33" } },
+      { "id": "sw1", "label": "交换机 SW1", "role": "switch", "kind": "switch",
+        "address": { "mac": "SW:01" } }
+    ],
+    "domains": [
+      { "id": "lan-a", "label": "广播域 LAN-A（VLAN 1）", "members": ["pc1", "pc2", "pc3", "sw1"] }
+    ],
+    "links": [
+      { "from": "pc1", "to": "sw1" }, { "from": "pc2", "to": "sw1" }, { "from": "pc3", "to": "sw1" }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "same-subnet",
+      "label": "同网段解析",
+      "initialState": {
+        "pc1": { "arp-cache": [] },
+        "sw1": { "mac-table": [] }
+      },
+      "steps": [
+        {
+          "id": "check-cache",
+          "title": "① 查询本地 ARP 缓存",
+          "description": "主机 A 判断目标 10.0.0.12 与自己同网段（按掩码 /24），先查 ARP 缓存——未命中。",
+          "events": [
+            { "id": "e-lookup", "kind": "process", "from": "pc1",
+              "to": { "kind": "device", "id": "pc1" },
+              "payload": null, "dependsOn": [], "note": "缓存未命中，需发 ARP Request" }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "arp-request",
+          "title": "② 广播 ARP Request",
+          "description": "主机 A 以广播帧（目的 MAC 全 F）发送 ARP Request：'谁是 10.0.0.12？请告诉 10.0.0.11'。广播域内所有设备都会收到；交换机泛洪转发，主机 B/C 收到但只有 B 响应。",
+          "events": [
+            { "id": "e-flood", "kind": "unicast", "from": "pc1",
+              "to": { "kind": "device", "id": "sw1" },
+              "payload": {
+                "proto": "ARP", "summary": "ARP Request: Who has 10.0.0.12?",
+                "size": 42, "cat": "broadcast",
+                "fields": { "opcode": "request(1)", "senderMac": "AA:11", "senderIp": "10.0.0.11",
+                            "targetMac": "00:00:00:00:00:00", "targetIp": "10.0.0.12" }
+              }, "dependsOn": [] },
+            { "id": "e-broadcast", "kind": "broadcast", "from": "sw1",
+              "to": { "kind": "broadcast", "domain": "lan-a", "excludeFrom": ["pc1"] },
+              "payload": {
+                "proto": "ARP", "summary": "泛洪：广播域内转发",
+                "size": 42, "cat": "broadcast", "fields": {}
+              }, "dependsOn": ["e-flood"],
+              "note": "接收者 pc2、pc3 由 lan-a 域推导；交换机同时学到 pc1 的 MAC" },
+            { "id": "e-ignore-c", "kind": "process", "from": "pc3",
+              "to": { "kind": "device", "id": "pc3" }, "payload": null,
+              "dependsOn": ["e-broadcast"], "note": "目标 IP 不是自己 → 丢弃（但可免费学习发送方映射）" }
+          ],
+          "stateDeltas": [
+            { "id": "d-mac1", "device": "sw1", "afterEvent": "e-flood",
+              "changes": [{ "table": "mac-table", "op": "learn",
+                "entry": { "vlan": 1, "mac": "AA:11", "port": "P1" } }] },
+            { "id": "d-mac2", "device": "sw1", "afterEvent": "e-broadcast",
+              "changes": [{ "table": "mac-table", "op": "learn",
+                "entry": { "vlan": 1, "mac": "BB:22", "port": "P2" } }] }
+          ],
+          "traceRow": { "time": "0.000", "src": "AA:11 (10.0.0.11)", "dst": "FF:FF:FF:FF:FF:FF",
+            "proto": "ARP", "info": "Who has 10.0.0.12? Tell 10.0.0.11", "size": 42, "cat": "broadcast", "eventRef": "e-broadcast" }
+        },
+        {
+          "id": "arp-reply",
+          "title": "③ 目标主机单播 ARP Reply",
+          "description": "只有主机 B 的 IP 与请求匹配，它以单播帧回复自己的 MAC 地址。注意：Request 是广播，Reply 是单播——两者不能混为一谈。",
+          "events": [
+            { "id": "e-reply", "kind": "unicast", "from": "pc2",
+              "to": { "kind": "device", "id": "pc1" },
+              "payload": {
+                "proto": "ARP", "summary": "ARP Reply: 10.0.0.12 is-at BB:22",
+                "size": 42, "cat": "response",
+                "fields": { "opcode": "reply(2)", "senderMac": "BB:22", "senderIp": "10.0.0.12",
+                            "targetMac": "AA:11", "targetIp": "10.0.0.11" }
+              }, "dependsOn": ["e-broadcast"], "note": "响应者是显式事件，不是广播事件的属性" }
+          ],
+          "stateDeltas": [
+            { "id": "d-cache1", "device": "pc2", "afterEvent": "e-broadcast",
+              "changes": [{ "table": "arp-cache", "op": "upsert",
+                "entry": { "ip": "10.0.0.11", "mac": "AA:11", "state": "reachable" } }] }
+          ],
+          "traceRow": { "time": "0.012", "src": "BB:22 (10.0.0.12)", "dst": "AA:11 (10.0.0.11)",
+            "proto": "ARP", "info": "10.0.0.12 is at BB:22", "size": 42, "cat": "response", "eventRef": "e-reply" }
+        },
+        {
+          "id": "cache-write",
+          "title": "④ 写入 ARP 缓存",
+          "description": "主机 A 收到 Reply，把 10.0.0.12 ↔ BB:22 写入 ARP 缓存（reachable，带老化计时）。后续发往 B 的以太网帧即可直接使用该 MAC。",
+          "events": [
+            { "id": "e-cache", "kind": "process", "from": "pc1",
+              "to": { "kind": "device", "id": "pc1" }, "payload": null,
+              "dependsOn": ["e-reply"], "note": "缓存写入" }
+          ],
+          "stateDeltas": [
+            { "id": "d-cache2", "device": "pc1", "afterEvent": "e-cache",
+              "changes": [{ "table": "arp-cache", "op": "upsert",
+                "entry": { "ip": "10.0.0.12", "mac": "BB:22", "state": "reachable" } }] }
+          ],
+          "traceRow": null
+        }
+      ]
+    },
+    {
+      "id": "cross-subnet",
+      "label": "跨网段：解析网关 MAC",
+      "initialState": {
+        "pc1": { "arp-cache": [{ "ip": "10.0.0.1", "mac": "GW:01", "state": "stale" }] },
+        "sw1": { "mac-table": [] }
+      },
+      "steps": [
+        {
+          "id": "gateway-decision",
+          "title": "① 目标不在本网段 → 解析默认网关",
+          "description": "主机 A 要访问 10.0.20.5（不同网段）。ARP 不负责跨网段路由：主机不会去解析远端服务器的 MAC，而是按路由表把包交给默认网关 10.0.0.1，因此要解析的是【网关】的 MAC。缓存中网关条目已过期（stale），需要重新解析。",
+          "events": [
+            { "id": "e-decide", "kind": "process", "from": "pc1",
+              "to": { "kind": "device", "id": "pc1" }, "payload": null,
+              "dependsOn": [], "note": "查路由表 → 下一跳 = 默认网关 10.0.0.1" }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "gateway-arp",
+          "title": "② 重新广播解析网关 MAC",
+          "description": "ARP Request 广播：'谁是 10.0.0.1？'。网关（路由器接口）回复。后续发往 10.0.20.5 的帧：目的 MAC=网关，目的 IP 仍=10.0.20.5。",
+          "events": [
+            { "id": "e-flood", "kind": "broadcast", "from": "pc1",
+              "to": { "kind": "broadcast", "domain": "lan-a", "excludeFrom": ["pc1"] },
+              "payload": { "proto": "ARP", "summary": "ARP Request: Who has 10.0.0.1?",
+                "size": 42, "cat": "broadcast",
+                "fields": { "opcode": "request(1)", "targetIp": "10.0.0.1" } },
+              "dependsOn": ["e-decide"] }
+          ],
+          "stateDeltas": [
+            { "id": "d1", "device": "pc1", "afterEvent": "e-flood",
+              "changes": [{ "table": "arp-cache", "op": "upsert",
+                "entry": { "ip": "10.0.0.1", "mac": "GW:01", "state": "reachable" } }] }
+          ],
+          "traceRow": { "time": "0.030", "src": "AA:11 (10.0.0.11)", "dst": "FF:FF:FF:FF:FF:FF",
+            "proto": "ARP", "info": "Who has 10.0.0.1? Tell 10.0.0.11", "size": 42, "cat": "broadcast", "eventRef": "e-flood" }
+        }
+      ]
+    }
+  ]
+}
