@@ -1,0 +1,260 @@
+/* 场景动效增强 + Protocol Explorer 风格图例。
+   约定：所有动画仅在 [data-playing="true"][data-reduced="false"] 时运行；
+   prefers-reduced-motion 下全部禁用。 */
+
+/* ---------- 关系色板（图内数据包 / 轨迹行号 / 图例圆点共用） ---------- */
+.systems-iso { --packet: var(--accent); }
+.kind-request { --kind-color: var(--accent); }
+.kind-data { --kind-color: #0f9d58; }
+.kind-control { --kind-color: #7c8698; }
+.kind-check { --kind-color: #c78a1b; }
+.kind-local { --kind-color: #7c5cbf; }
+.kind-lost,
+.kind-reject { --kind-color: var(--fault); }
+.kind-compare { --kind-color: #087e7f; }
+body.dark .kind-data { --kind-color: #31c48d; }
+body.dark .kind-local { --kind-color: #9a7ed9; }
+body.dark .kind-check { --kind-color: #d9a13f; }
+
+.systems-iso svg[data-kind="data"] { --packet: var(--kind-color); }
+.systems-iso svg[data-kind="lost"],
+.systems-iso svg[data-kind="reject"] { --packet: var(--fault); }
+body.dark .systems-iso svg[data-kind="data"] { --packet: #31c48d; }
+
+/* 数据包与连线按类型取色 */
+.systems-iso .semantic-edge { stroke: var(--packet); }
+.systems-iso .iso-travel-dot { fill: var(--packet); }
+.systems-iso .iso-trail-dot {
+  fill: var(--packet);
+  stroke: var(--panel);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+.systems-iso .iso-lost-packet {
+  fill: var(--fault);
+  stroke: var(--panel);
+  stroke-width: 2;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--fault) 45%, transparent));
+}
+
+/* 播放中：传递连线变为流动虚线 */
+.systems-iso .semantic-edge.transfer { stroke-dasharray: 9 6; }
+.systems-iso svg[data-playing="true"][data-reduced="false"] .semantic-edge.transfer {
+  animation: scene-flow .8s linear infinite;
+}
+@keyframes scene-flow { to { stroke-dashoffset: -15; } }
+
+/* ---------- 网络场景：设备造型、拓扑连线与地址标签 ---------- */
+.systems-iso .iso-topology { pointer-events: none; }
+.systems-iso .net-link {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 40%, var(--line));
+  stroke-width: 1.5;
+  stroke-dasharray: 5 6;
+  stroke-linecap: round;
+  opacity: .32;
+}
+.systems-iso .node-current .net-link { opacity: .5; }
+.systems-iso svg[data-scene="network"] .semantic-edge { stroke-width: 2.4; }
+.systems-iso .iso-cloud {
+  fill: var(--panel);
+  stroke: color-mix(in srgb, var(--accent) 50%, var(--line));
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+.systems-iso .iso-cloud-inner {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 32%, var(--line));
+  stroke-width: 1.2;
+  stroke-dasharray: 4 5;
+  opacity: .85;
+}
+.systems-iso .node-current .iso-cloud {
+  fill: color-mix(in srgb, var(--accent) 9%, var(--panel));
+  stroke: var(--accent);
+}
+.systems-iso .node-current .iso-cloud-inner { stroke: color-mix(in srgb, var(--accent) 55%, transparent); }
+.systems-iso .iso-screen {
+  fill: color-mix(in srgb, var(--accent) 5%, var(--panel));
+  stroke: var(--ik-detail, var(--line));
+  stroke-width: 1;
+}
+.systems-iso .node-current .iso-screen { stroke: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+.systems-iso .iso-led { fill: color-mix(in srgb, var(--accent) 75%, var(--panel)); }
+.systems-iso .iso-antenna path { fill: none; stroke: var(--ik-line, var(--line)); stroke-width: 1.6; stroke-linecap: round; }
+.systems-iso .iso-antenna circle { fill: var(--panel); stroke: var(--ik-line, var(--line)); stroke-width: 1.4; }
+.systems-iso .node-current .iso-antenna path,
+.systems-iso .node-current .iso-antenna circle { stroke: var(--accent); }
+
+.systems-iso .net-label .net-name {
+  font-size: 13px;
+  font-weight: 600;
+  fill: var(--ik-ink-hi, var(--ink));
+}
+.systems-iso .net-label .net-addr {
+  font-family: var(--ik-mono, monospace);
+  font-size: 10.5px;
+  fill: var(--ik-ink, var(--muted));
+  letter-spacing: .01em;
+}
+.systems-iso .node-current .net-label .net-name { fill: var(--accent); }
+
+/* ---------- 图内 key：彩色圆点 + 关系名（对齐 Protocol Explorer 的类别标签） ---------- */
+#relation-kind.relation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--kind-color, var(--accent));
+  font-size: 13px;
+  font-weight: 600;
+}
+#relation-kind.relation-chip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--kind-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kind-color, var(--accent)) 18%, transparent);
+}
+
+/* ---------- 数据包流图例条（表格上方一排彩色圆点，仅列当前场景出现的类型） ---------- */
+.flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  padding: 8px 15px;
+  border-bottom: 1px solid var(--faint);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+.flow-legend .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: .62;
+  transition: opacity .18s ease, color .18s ease;
+}
+.flow-legend .legend-item.active {
+  opacity: 1;
+  color: var(--ink);
+  font-weight: 600;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--kind-color, var(--accent));
+  flex: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--kind-color, var(--accent)) 28%, transparent);
+}
+.flow-legend .legend-item.active .legend-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kind-color, var(--accent)) 22%, transparent);
+}
+
+/* ---------- 轨迹行号：与图例同色 ---------- */
+.row-no {
+  background: var(--kind-color, var(--accent));
+  border-color: var(--kind-color, var(--accent));
+  color: #fff;
+}
+#trace-body tr.current .row-no {
+  background: var(--kind-color, var(--accent));
+  border-color: var(--kind-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kind-color, var(--accent)) 25%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .systems-iso .semantic-edge { animation: none !important; }
+  .flow-legend .legend-item { transition: none; }
+}
+
+/* ---------- 数据包类别色板（PE 语义配色：握手ACK / 客户端数据 / 服务器数据 / FIN / 丢失） ---------- */
+.cat-hand { --kind-color: #2ea44f; }
+.cat-cdata { --kind-color: #dfa227; }
+.cat-sdata { --kind-color: #8b5cf6; }
+.cat-fin { --kind-color: #64748b; }
+.cat-lost { --kind-color: var(--fault); }
+body.dark .cat-hand { --kind-color: #3ecf6f; }
+body.dark .cat-cdata { --kind-color: #f0b954; }
+body.dark .cat-sdata { --kind-color: #a78bfa; }
+body.dark .cat-fin { --kind-color: #94a3b8; }
+
+/* 图内数据包与连线按类别取色（覆盖 kind 规则，网课语义优先） */
+.systems-iso svg[data-packet="hand"] { --packet: #2ea44f; }
+.systems-iso svg[data-packet="cdata"] { --packet: #dfa227; }
+.systems-iso svg[data-packet="sdata"] { --packet: #8b5cf6; }
+.systems-iso svg[data-packet="fin"] { --packet: #64748b; }
+body.dark .systems-iso svg[data-packet="hand"] { --packet: #3ecf6f; }
+body.dark .systems-iso svg[data-packet="cdata"] { --packet: #f0b954; }
+body.dark .systems-iso svg[data-packet="sdata"] { --packet: #a78bfa; }
+body.dark .systems-iso svg[data-packet="fin"] { --packet: #94a3b8; }
+
+/* ---------- 数据包流表（PE 风格七列） ---------- */
+.trace-scroll td.t-time,
+.trace-scroll td.t-addr,
+.trace-scroll td.t-proto,
+.trace-scroll td.t-info,
+.trace-scroll td.t-size {
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
+  font-size: .82em;
+  white-space: nowrap;
+}
+.trace-scroll td.t-info {
+  white-space: normal;
+  min-width: 16em;
+}
+.trace-scroll td.t-time,
+.trace-scroll td.t-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: .85;
+}
+.trace-scroll td.t-addr { opacity: .92; }
+.trace-scroll td.t-proto {
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+.lost-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: .76em;
+  line-height: 1.7;
+  vertical-align: 1px;
+  background: color-mix(in srgb, var(--fault) 16%, transparent);
+  color: var(--fault);
+  border: 1px solid color-mix(in srgb, var(--fault) 45%, transparent);
+}
+/* 丢失的报文：整行淡化（PE 风格），徽标保持醒目 */
+#trace-body tr.lost-row td { opacity: .45; }
+#trace-body tr.lost-row td.t-info { opacity: 1; }
+#trace-body tr.lost-row td .lost-badge { opacity: 1; }
+
+/* ---------- 中间演示面板：内容可滚动（示意图固定高度，步骤说明不再被截断） ---------- */
+.lesson-view { overflow-y: auto; }
+.diagram { flex: none; height: min(46vh, 430px); }
+
+/* ---------- 右侧「机制」页签：跟随当前步骤的详解卡片 ---------- */
+.step-detail {
+  border-left: 3px solid var(--accent);
+  padding: 10px 12px;
+  margin: 10px 0 14px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border-radius: 0 8px 8px 0;
+}
+.step-detail h4 { color: var(--accent); margin: 0 0 6px; }
+.step-signal-line { margin: 0 0 8px; }
+.step-signal-line code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Courier New', monospace;
+  font-size: .85em;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+.state-line { font-size: 12px; color: var(--muted); margin: 8px 0 0; }

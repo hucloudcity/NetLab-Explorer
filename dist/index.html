@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#8052c7"><meta name="description" content="TCP 连接全流程交互式演示：三次握手、数据传输、丢包与快速重传、四次挥手，逐步查看每个报文的方向、地址与大小。">
+<title>TCP 连接全流程 · 交互式演示</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="./isokit.css?v=20261112-4"><link rel="stylesheet" href="./styles.css?v=20261112-4"><link rel="stylesheet" href="./scene-motion.css?v=20261112-4">
+<script defer src="./data.js?v=20261112-4"></script><script defer src="./mechanisms.js?v=20261112-4"></script><script defer src="./isokit.js?v=20261112-4"></script><script defer src="./app.js?v=20261112-4"></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到机制演示</a>
+<header class="topbar">
+ <button id="menu" class="icon-button mobile" aria-label="打开演示流程"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#menu"/></svg></button>
+ <a class="brand" href="#tcp" aria-label="TCP 连接全流程演示首页"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3 43 13 24 23 5 13Z M5 20 24 30 43 20 M5 28 24 38 43 28 M5 13v22l19 10 19-10V13 M24 23v22"/></svg><span><b>TCP <em>LIFECYCLE</em></b><small>连接全流程 · 交互式演示</small></span></a>
+ <div class="now"><small>网络协议 · 单主题演示</small><strong id="current-title">TCP 连接全流程</strong></div>
+ <div class="progress"><div><small>学习进度</small><strong id="progress-number">0 / 1</strong></div><div class="progress-track"><span id="progress-bar"></span></div></div>
+ <button id="theme" class="icon-button" aria-label="切换深色主题" title="切换主题"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#moon"/></svg></button>
+</header>
+<div class="workspace">
+ <aside class="sidebar panel" id="sidebar" aria-label="演示流程">
+  <div class="panel-head"><h2>演示流程 <span>14 步</span></h2></div>
+  <div id="topic-list" class="topic-list"></div>
+  <div class="sidebar-foot"><span class="live-dot"></span> 握手 · 传输 · 重传 · 挥手 <button id="about" aria-label="查看内容来源说明"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#info"/></svg></button></div>
+ </aside>
+ <main id="main" class="canvas panel" tabindex="-1">
+  <div class="canvas-toolbar"><div class="view-tabs" role="tablist" aria-label="画布视图"><button id="mechanism-tab" role="tab" aria-selected="true"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#mechanism"/></svg><span>机制演示</span></button></div><span class="model-label">教学模型 · 非真实抓包</span></div>
+  <div id="lesson-view" class="lesson-view"><div class="scene-heading"><div><span class="eyebrow" id="scene-en"></span><h1 id="scene-title"></h1></div><span class="scene-index" id="scene-index">01</span></div><div class="scenario-row"><span>场景</span><button id="normal" class="selected">主流程</button><button id="fault"></button><button id="special" hidden></button></div><div class="diagram-key"><span id="relation-kind"></span><span id="diagram-note">逻辑设备 · 非真实网络拓扑</span></div><div id="diagram" class="diagram"></div><div class="scene-caption" aria-live="polite"><span class="step-chip" id="step-chip">01</span><div><strong id="step-title"></strong><span id="step-signal"></span><div id="diagram-state" class="diagram-state"></div><p id="step-description"></p></div></div></div>
+ </main>
+ <aside class="inspector panel" aria-label="机制说明"><div class="panel-head"><h2>机制详解</h2><span id="group-badge">网络协议</span></div><div class="detail-tabs" role="tablist" aria-label="说明视图"><button data-detail="concept" role="tab" aria-selected="true">机制</button><button data-detail="sources" role="tab" aria-selected="false">来源</button></div><div id="detail-content" class="detail-content"></div></aside>
+ <section class="flow panel" aria-label="数据包流"><div class="flow-toolbar"><h2>数据包流 <span id="flow-count">01 / 14</span></h2><div class="controls"><button id="speed" aria-label="调整播放速度">1×</button><span class="control-separator"></span><button id="previous" class="icon-button" aria-label="上一步" title="上一步 ←"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#chevron-left"/></svg></button><button id="play" class="play-button" aria-label="播放演示" title="播放 / 暂停 Space"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#play"/></svg><span>播放</span></button><button id="next" title="下一步 →"><span>下一步</span><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#chevron-right"/></svg></button><button id="reset" class="icon-button" aria-label="重置演示" title="重置 Esc"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#reset"/></svg></button></div></div><div class="flow-legend" id="flow-legend" aria-label="报文类别图例"></div><div class="trace-scroll"><table><thead id="trace-head"></thead><tbody id="trace-body"></tbody></table></div><div class="flow-foot"><span id="flow-note">点击任一行跳到该报文；Space 播放，← → 逐步探索</span><button id="complete" class="text-button"><span>标记已学</span><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#check"/></svg></button></div></section>
+</div>
+<div id="shade" hidden></div><div id="toast" role="status"></div>
+<dialog id="about-dialog"><button id="close-about" class="icon-button" aria-label="关闭说明"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#close"/></svg></button><div class="eyebrow">ABOUT THIS DEMO</div><h2>一条连接的一生。</h2><p>这份页面只做一件事：把一条 TCP 连接从建立到关闭的 14 个报文逐步演示出来——三次握手、数据往返、一段响应丢失后的重复确认与快速重传（SACK），最后是四次挥手。</p><p>下方的「数据包流」按抓包顺序列出每一段的源地址、目的地址、协议、序列号信息与报文大小；点击任意一行即可回到该步骤。右侧「机制」页签给出当前这一步的深入注解，「来源」页签区分规范文档与课程背景。</p><p>图示、序列号、时间与报文长度都是简化的教学模型，取自一次典型连接的示例值，不是真实抓包记录，也不构成任何实现保证。</p><p>机制演示使用 <a href="https://aadilghani1.github.io/isokit/" target="_blank" rel="noopener">IsoKit <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#arrow-up-right"/></svg></a> 绘制，立体造型代表逻辑实体。<a href="./licenses/react-isokit.txt" target="_blank" rel="noopener">MIT 许可</a> · <a href="./licenses/isokit-notices.md" target="_blank" rel="noopener">上游声明</a>。</p><p>交互形式参考 <a href="https://protocol-explorer-alpha.vercel.app/" target="_blank" rel="noopener">Protocol Explorer <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#arrow-up-right"/></svg></a>；内容整理自 RFC 9293 与 CMU 15-213 课程材料。学习进度仅保存在当前浏览器。</p><button id="clear-progress" class="outline-button">清除本机学习进度</button></dialog>
+</body></html>
