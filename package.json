@@ -5,7 +5,7 @@
   "scripts": {
     "start": "python -m http.server 8091",
     "build": "node scripts/build.mjs",
-    "check": "node check-content.cjs && node check-isokit.cjs && node check-motion.cjs"
+    "check": "node check-content.cjs && node check-isokit.cjs && node check-motion.cjs && node scripts/check-paths.cjs"
   },
   "dependencies": {
     "react": "19.3.1",

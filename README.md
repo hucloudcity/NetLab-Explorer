@@ -13,6 +13,8 @@
 | 二 · 已完成 | `docs/knowledge-source-index.md` | 四级来源台账、知识点→来源映射、授权状态、维护流程 |
 | 二 · 已完成 | `docs/rfc-index.md` | 16 份 RFC 的官方状态复核（Status / Obsoletes / Updates / Errata） |
 | 三 · 待启动 | `docs/content-data-model.md`、`src/types/*.ts` | 知识/来源/分类类型与 Zod 校验 |
+| M0 · 已完成 | `docs/migration-plan.md` | 源文件归位方案与里程碑状态 |
+| M0.1 · 已完成 | `docs/deployment-path-verification.md` | 部署路径验证：相对路径修复、三前缀实测、路径自检护栏 |
 
 > 代码基线：`main` 分支首个提交 `52fba15`（2026-11-12），作为后续改造的回滚点。
 
@@ -32,13 +34,17 @@
 ## 运行
 
 ```bash
-npm start        # 服务项目根目录；页面入口 http://127.0.0.1:8091/src/app/（端口 8091，避免与完整版 8090 冲突）
+npm start        # 服务项目根目录（端口 8091，避免与完整版 8090 冲突）
 ```
+
+- 站点根 `http://127.0.0.1:8091/` 会跳转到页面入口 `http://127.0.0.1:8091/src/app/`（与 GitHub Pages 上访问 `/<repo>/` 行为一致）。
+
+> **部署约定（勿改回根绝对路径）：** 页面内所有本地资源必须用相对路径（`./` 或 `../../`）。GitHub Pages 项目站点部署在 `https://<user>.github.io/<repo>/` 下，任何 `/content/x.js` 这类以 `/` 开头的引用都会指向域名根而 404。详见 `docs/deployment-path-verification.md`。
 
 ## 校验
 
 ```bash
-npm run check    # 内容契约（1 课 / 2 场景 / 18 阶段）+ IsoKit 渲染回归 + 动效回归
+npm run check    # 内容契约 + IsoKit 渲染回归 + 动效回归 + 部署路径自检（scripts/check-paths.cjs）
 node .openai/smoke-runtime.cjs   # jsdom 运行时冒烟（需先启动 npm start）
 node .openai/shot-tcp.cjs        # 截图（puppeteer-core + 本机 Chrome）
 ```
@@ -50,4 +56,6 @@ node .openai/shot-tcp.cjs        # 截图（puppeteer-core + 本机 Chrome）
 - `src/app/index.html`：页面入口；移除三部分导航、搜索、筛选、知识图谱页签；标题与页脚为单主题文案。
 - `src/app/app.js`：UI 逻辑（进度、标题、详解对单主题适配；关联主题为空时隐藏对应区块）。
 - `dist/`：只含构建产物 `isokit.js`（由 `npm run build` 生成）与 `licenses/`。
-- 端口使用 8091；index.html 以根绝对路径引用 `/content/*` 与 `/dist/isokit.js`，本地与 GitHub Pages 装配目录使用相同布局。
+- 仓库根 `index.html`：仅作站点根跳转页（`meta refresh` → `./src/app/`），CI 一并装配进 `_site/`。
+- 资源引用全部相对路径（`../../content/*`、`../../dist/*`），与部署前缀无关；`scripts/check-paths.cjs` 禁止根绝对路径并校验每条引用真实存在。
+- 端口使用 8091；`_site/` 为 CI 装配产物，已在 `.gitignore` 中排除。

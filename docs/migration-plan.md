@@ -30,6 +30,14 @@
 - **修正**：`isokit.css` 实为构建产物（删除后 `npm run build` 自动重建），保留在 `dist/`，index.html 以 `/dist/isokit.css` 引用。
 - 引用改为根绝对路径（`/content/*`、`/dist/isokit.css`），`npm start` 服务项目根，页面入口 `http://127.0.0.1:8091/src/app/`；校验/冒烟/截图脚本与 CI（Pages 装配 `_site`）同步更新。
 - **验收结果**：`npm run check` 三绿；冒烟 `runtime errors: none`（主流程 14 行、故障场景 alternate 4 行）；四场景截图与基线逐像素 0 差异。
+- ⚠️ **事后发现**：此处改用的根绝对路径在 GitHub Pages 项目站点（`/<repo>/` 子路径）下全部 404，由 M0.1 修正。
+
+### M0.1 — 部署路径修正（半小时级）— ✅ 已完成 2026-11-12
+- **问题**：根绝对路径 `/content/*`、`/dist/*` 在仓库子路径部署下指向域名根，实测 4 个资源 404、`LESSONS is not defined`、页面空白。
+- **修复**：全部改回相对路径（`../../content/*`、`../../dist/*`）；新增仓库根 `index.html` 作站点根跳转页，CI 装配进 `_site/`。
+- **护栏**：`scripts/check-paths.cjs`（零依赖）接入 `npm run check` 与 CI，禁止根绝对路径并校验每条引用真实存在。
+- **顺带修复**：关于对话框的 `./licenses/*` 链接在 M0 后失效（应为 `../../dist/licenses/*`），由新护栏发现。
+- 详见 `docs/deployment-path-verification.md`。
 
 ### M1 — 类型与校验器落地（1 天级）
 - `src/types/{knowledge,source,demo}.ts`（按 data-model-design.md / demo-event-model.md 定稿的类型）。
@@ -77,6 +85,8 @@
 2. **行为断言**：smoke-runtime 的既有断言（表格行数/图例/丢失徽标/待机态）不动，作为行为契约。
 3. **双数据灰度**：M2 期间新旧数据并存（适配层桥接），切换前用 `npm run check` 同时校验两套；页面切新数据后旧数据只读保留一个提交，再删。
 4. **每里程碑一个提交**：出问题 `git revert` 单点回滚，不做混合回退。
+5. **路径引用自检**：`scripts/check-paths.cjs` 随 `npm run check` 执行，任何新增资源若用根绝对路径或指向不存在的文件，构建前即失败。
+6. **部署形态回归**：`.openai/check-pages-path.cjs` 可在仓库子路径 / 根路径 / 多层嵌套三种前缀下用真实浏览器验证；后续里程碑调整目录布局时必须重跑。
 
 ## 六、尚未解决的模型开放问题（诚实清单）
 

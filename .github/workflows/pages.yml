@@ -33,10 +33,13 @@ jobs:
         run: npm run check
       - name: Build local assets
         run: npm run build
-      - name: Stage site (mirror repo layout for root-absolute paths)
+      - name: Stage site (mirror repo layout; paths are relative, prefix-agnostic)
         run: |
           mkdir -p _site
           cp -r src content dist _site/
+          cp index.html _site/index.html
+      - name: Verify staged paths resolve (mirrors deployed layout)
+        run: node scripts/check-paths.cjs
       - name: Upload site
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v4
