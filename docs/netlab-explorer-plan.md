@@ -1278,9 +1278,15 @@ WorkBuddy 不应直接一次性生成所有网络知识页面。
 | 阶段 | 交付物 | 状态 | 日期 |
 |---|---|---|---|
 | 第一阶段 项目现状分析 | `docs/architecture-analysis.md` | 已完成 | 2026-11-12 |
-| 第二阶段 知识体系索引 | `docs/network-knowledge-map.md`、`docs/knowledge-source-index.md`、`docs/rfc-index.md` | 待确认后开始 | — |
+| 第二阶段 知识体系索引 | `docs/network-knowledge-map.md`、`docs/knowledge-source-index.md`、`docs/rfc-index.md`、`docs/tech-decisions.md` | **已完成，待审查** | 2026-11-12 |
 | 第三阶段 内容数据模型 | `src/types/*`、`src/schemas/*`、`docs/content-data-model.md` | 未开始 | — |
 | 第四阶段 第一批知识内容 | 内容数据 + 来源索引 | 未开始 | — |
 | 第五阶段 三个核心演示 | TCP / ARP / DNS | TCP 已有（需按新模型重构）；ARP、DNS 未开始 | — |
+
+**第二阶段关键修正（相对本计划书原文）：**
+
+1. **RFC 8446 已于 2026-07 被 RFC 9846 废弃**，TLS 1.3 的现行规范是 9846；8446 的小节编号（4.1 Key Exchange / 4.4 Authentication）在 9846 中已变为 4.2 / 4.5。详见 `docs/rfc-index.md`。
+2. 计划书假设的 "React + TypeScript + Vite" 与现状不符，实际为 React 19 + JavaScript + esbuild；TypeScript 按 ADR-001 渐进引入（只用于数据模型，`tsc --noEmit` 检查，不引入 Vite）。
+3. CSAPP 第三方中文镜像已按 ADR-003 停用，改指官方站点。
 
 **底座变更记录：** 2026-11-12 经用户确认，NetLab Explorer 以 `C:/Users/ECCOM/Desktop/项目/cs-systems-design-tcp` 为唯一代码底座，就地扩展，不再另建目录。

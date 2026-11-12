@@ -1,8 +1,10 @@
 # CSAPP 机制详情扩充
 
-依据：https://hansimov.gitbook.io/csapp/
+> **2026-11-12 修订**：本文档原先引用的第三方中文镜像（`hansimov.gitbook.io`）已按 ADR-003 判定为不可用，**不再作为正式来源**。正式来源改为 CMU 官方站点 https://csapp.cs.cmu.edu/ 。下列内容作为历史记录保留，后续扩写时须改用官方来源核对。
 
-核对日期：2026-11-04。电子书正文同时对照其公开源文件仓库 https://github.com/Hansimov/csapp 核查。
+原依据（已废弃）：https://hansimov.gitbook.io/csapp/
+
+核对日期：2026-11-04。电子书正文同时对照其公开源文件仓库 https://github.com/Hansimov/csapp 核查（该仓库亦为第三方，非官方来源）。
 
 ## 范围
 

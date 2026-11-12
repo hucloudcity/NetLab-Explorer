@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon=name=>`<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#${name}"/></svg>`;
 const byId=Object.fromEntries(LESSONS.map(l=>[l.id,l]));
-const sourceById={...SOURCES,...Object.fromEntries(Object.entries(CSAPP_READINGS).map(([id,r])=>['csapp_'+id,{name:`CSAPP ${r.section} · ${r.title}`,url:'https://hansimov.gitbook.io/csapp/'+r.path,note:r.note,kind:'CSAPP 中文版 · 系统基础'}]))};
+const sourceById={...SOURCES,...Object.fromEntries(Object.entries(CSAPP_READINGS).map(([id,r])=>['csapp_'+id,{name:`CSAPP ${r.section} · ${r.title}`,url:'https://csapp.cs.cmu.edu/',note:r.note,kind:'CSAPP 官方站点 · 系统基础'}]))};
 const safeRead=(k,otherwise)=>{try{return JSON.parse(localStorage.getItem(k))??otherwise}catch{return otherwise}};
 let completed=new Set(safeRead('systems-completed',[]).filter(id=>byId[id]));
 let current=byId[location.hash.slice(1)]||LESSONS[0],step=0,fault=false,special=false,started=false,filter='all',query='',detail='concept',view='mechanism',timer=null,speed=1,toastTimer;

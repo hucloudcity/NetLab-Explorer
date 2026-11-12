@@ -1,7 +1,20 @@
 # NetLab Explorer（底座：TCP 连接全流程演示）
 
 > 本项目已定为 **NetLab Explorer** 的代码底座（2026-11-12 确认），后续在此就地扩展为网络知识平台。
-> 需求基线：`docs/netlab-explorer-plan.md` · 现状分析：`docs/architecture-analysis.md`
+
+## 文档索引
+
+| 阶段 | 文档 | 内容 |
+|---|---|---|
+| 需求基线 | `docs/netlab-explorer-plan.md` | 计划书全文归档（十二节 + 九大模块）+ 执行状态跟踪 |
+| 一 · 已完成 | `docs/architecture-analysis.md` | 现状架构分析、差距矩阵、实施计划 S0–S4 |
+| 二 · 已完成 | `docs/tech-decisions.md` | 四项技术决策（TS 渐进引入 / 恢复多主题目录 / CSAPP 官方来源 / Git 基线） |
+| 二 · 已完成 | `docs/network-knowledge-map.md` | 九大模块 + 165 个知识点 + 依赖关系 + 学习路径 + 动画/实验适配度 |
+| 二 · 已完成 | `docs/knowledge-source-index.md` | 四级来源台账、知识点→来源映射、授权状态、维护流程 |
+| 二 · 已完成 | `docs/rfc-index.md` | 16 份 RFC 的官方状态复核（Status / Obsoletes / Updates / Errata） |
+| 三 · 待启动 | `docs/content-data-model.md`、`src/types/*.ts` | 知识/来源/分类类型与 Zod 校验 |
+
+> 代码基线：`main` 分支首个提交 `52fba15`（2026-11-12），作为后续改造的回滚点。
 
 由 `cs-systems-design` 完整版复制并裁剪而来的单主题站点：**页面只保留 TCP 连接全流程这一课**，其余 27 个主题全部移除。核心代码、渲染引擎（IsoKit / React）与交互形式与完整版一致。
 
