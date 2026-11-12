@@ -49,6 +49,8 @@ L1 用 Zod（迁移时在 package.json 显式声明直接依赖，ADR-001）；L
 | X10 | scenario.initialState 键必须是 participant id；`traceRow.lost=true` 的行必须有对应 `drop` 事件或 payload 注明丢失 | |
 | X11 | 来源 `sections` 非空时必须通过格式启发式（如 RFC 小节 `\d+(\.\d+)*`）；**无法自动核对内容真实性**，内容真实性走 checkedAt 流程（L3/L4） | |
 | X12 | 全库 id 唯一（跨 knowledge/demo/source 三个命名空间各自唯一，跨空间允许同名） | |
+| X13 | **波次纯度**：波次划分只由 `dependsOn` 决定，与 `events[]` 数组顺序无关——校验器对每个步骤「打乱数组顺序重算波次」，结果必须逐事件一致 | `打乱顺序后 e-b 波次改变 → 存在隐式顺序依赖` |
+| X14 | **fold 纯度**：对 initialState + deltas 做一次 deep-freeze 后执行折叠，不得抛错且不得改变输入对象（实现层单测，M1 落地） | `fold 修改了输入数据 → 重复播放结果不一致` |
 
 ## 四、L3 发布门禁（status 与授权双轨，见 data-model-design.md §6）
 
