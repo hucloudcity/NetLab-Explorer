@@ -17,7 +17,7 @@
 | `src/schemas/knowledge.schema.ts` | 新增 | 知识点 Zod schema；id 强制 `NET-MM-NN`；六问字段非空 |
 | `src/engine/waves.ts` | 新增 | `computeWaves`（拓扑分层波次推导）+ `checkWavePurity`（X13） |
 | `src/engine/fold-state.ts` | 新增 | `foldState`（纯函数状态折叠）+ `deepFreeze` + `snapshotsEqual`（X14 支撑） |
-| `scripts/validate-content.mts` | 新增 | 校验器入口：L1 Zod → L2 X1–X14 → L3 P1–P6 + 内建自测 |
+| `scripts/validate-content.mts` | 新增 | 校验器入口：L1 Zod → L2 X1–X14 → L3 P1–P7（P7 于 M2-P0 增加） + 内建自测 |
 | `tsconfig.json` | 新增 | strict 全开（`noUncheckedIndexedAccess` 等）；`noEmit`；NodeNext |
 | `package.json` | 修改 | **`zod@^4.6.7` 声明为直接依赖**（不再依赖 react-isokit 的传递副本）；`typescript@^7.0.2`、`@types/node` 开发依赖；`"type": "module"`（见下）；新增 `check:types` / `check:content-data` 并接入 `check` |
 | `.github/workflows/pages.yml` | 修改 | CI 新增 `tsc --noEmit` 与 `validate-content` 两个独立步骤 |
@@ -58,7 +58,7 @@
 - **X14 fold 纯度**：每场景 deep-freeze 后折叠成功、输入未变、双次折叠逐字段一致；
 - **阴性测试**（验证校验器非"永远绿灯"，测后已清理）：向 `content/demos/` 注入含 12 类缺陷的假 demo → **25 个 ERROR 全部命中**（重复设备 id、幽灵域成员、无链路成员、悬空 dependsOn、悬空 afterEvent、重复事件 id、未知设备/域引用、process 带 payload、非白名单状态表、lost 行无 drop 事件、unicast 形状错误等），退出码 1。
 
-X1/X2/X3/X11 与发布门禁 P1–P6：规则**已实现**，当前 `content/` 尚无 knowledge/sources 落地数据，校验器输出 INFO 跳过说明；门禁内核经内建自测验证（published 引用 pending 来源被 P2 拦截；P6 来源失效联动命中降级名单）。
+X1/X2/X3/X11 与发布门禁 P1–P6（M2-P0 起扩展为 P1–P7）：规则**已实现**，当前 `content/` 尚无 knowledge/sources 落地数据，校验器输出 INFO 跳过说明；门禁内核经内建自测验证（published 引用 pending 来源被 P2 拦截；P6 来源失效联动命中降级名单）。
 
 ## 五、自动化检查与 CI
 
@@ -80,7 +80,7 @@ X1/X2/X3/X11 与发布门禁 P1–P6：规则**已实现**，当前 `content/` �
 |---|---|
 | 类型定义（Knowledge/Source/Demo/Topology/Device/Event/TargetSpec/StateDelta/StateSnapshot/SourceRef 等） | ✅ 12 个核心类型 + 9 个辅助枚举，与设计文档一致，判别联合，无 any，可选/必填/nullable 区分，复用无重复 |
 | Zod Schema，zod 声明为直接依赖 | ✅ 3 个 schema 文件，`zod@^4.6.7` 在 package.json `dependencies` 显式声明 |
-| 跨数据引用校验器（12 项检查 + 状态双轨） | ✅ X1–X14 全实现；X1–X3/X11、P1–P6 随落地数据自动启用（已自测）；status 与 licenseStatus 分轨检查 |
+| 跨数据引用校验器（12 项检查 + 状态双轨） | ✅ X1–X14 全实现；X1–X3/X11、P1–P7 随落地数据自动启用（已自测）；status 与 licenseStatus 分轨检查 |
 | 三份样例五级验证（解析/结构/跨引用/依赖/发布规则） | ✅ 全过；发现并修复 1 处样例缺字段、确认 2 处设计缺口并同步文档 |
 | tsc --noEmit + 校验脚本 + 样例校验接入 check/CI | ✅ 六段 check + CI 两个独立步骤 |
 | 原四项检查继续通过 | ✅ 内容契约 / 渲染回归 / 动效回归 / 路径自检全绿；页面 200、冒烟 `runtime errors: none`（主 14 行 / alternate 4 行）、构建可重复 |

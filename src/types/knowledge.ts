@@ -32,14 +32,6 @@ export interface PacketStructure {
   layout?: { field: string; bits: string; note?: string }[];
 }
 
-interface SourceRefShape {
-  sourceId: string;
-  purpose: string;
-  sections: string[];
-  checkedAt: string;
-  verificationNote?: string;
-}
-
 /**
  * 知识点主体。
  * 六问正文对应计划书 §6.1 基础内容模板：是什么/为什么/原理/实际场景/常见误区。

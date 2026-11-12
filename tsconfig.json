@@ -18,6 +18,6 @@
     "src/types/**/*.ts",
     "src/schemas/**/*.ts",
     "src/engine/**/*.ts",
-    "scripts/validate-content.mts"
+    "scripts/**/*.mts"
   ]
 }

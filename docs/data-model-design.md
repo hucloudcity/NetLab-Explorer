@@ -196,9 +196,10 @@ interface Demo {
 **发布门禁规则**（完整规则见 `docs/validation-rules.md` §4）：
 
 - `status = 'published'` 的知识点，其所有 `sourceRefs` 必须满足：
-  1. `sourceId` 存在于台账且 `licenseStatus` ∉ {`pending`, `per-file-review`}；
-  2. 每条 ref 的 `checkedAt` 非空且 ≤ 当前日期；
-  3. `contentState ∈ {original, adapted, license-verified}`（`third-party` / `permission-required` 不得发布）。
+  1. **至少 1 条 sourceRef（M2-P0 / P7）**——draft 可无来源，review 可挂待确认来源，但都不得发布；
+  2. `sourceId` 存在于台账且 `licenseStatus` ∉ {`pending`, `per-file-review`}；
+  3. 每条 ref 的 `checkedAt` 非空且 ≤ 当前日期；
+  4. `contentState ∈ {original, adapted, license-verified}`（`third-party` / `permission-required` 不得发布）。
 - 来源授权状态变更（如某 RFC 被废弃）时，校验器扫描所有引用它的知识点，命中者自动降回 `review` —— 这直接对应 RFC 8446→9846 那类发现（第二阶段实测发生过）。
 - demo 的 `published` 要求引用的知识点全部 `published`（演示不能先于它解释的知识上线）。
 

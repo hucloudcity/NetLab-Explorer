@@ -33,6 +33,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Validate content data (L1 Zod + L2 cross-refs + L3 gates)
         run: node scripts/validate-content.mts
+      - name: Run data model tests (waves / fold / gates / schema / multicast)
+        run: node scripts/test-data-model.mts
       - name: Run content, rendering, and motion checks
         run: npm run check
       - name: Build local assets

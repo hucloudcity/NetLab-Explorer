@@ -13,12 +13,23 @@
  *
  * 通用表条目键规则：entry.name → entry.id → 整条 JSON（用于 upsert 的替换判定）。
  * op 语义：
- * - arp-cache: upsert 按 ip 替换；expire 置 stale 并去掉 mac；clear 清空该表；
+ * - arp-cache: upsert 按 ip 替换；expire 置 stale 并去掉 mac（条目不存在时 no-op，
+ *   不凭空创建——expire 只描述「已有条目老化」）；clear 清空该表；
  * - mac-table: learn 按 vlan:mac 替换；age 为展示层老化（此处 no-op）；flush 清空；
  * - tcp-state / ospf-neighbor: set 按 peer 替换；
  * - 通用表: upsert 按通用键替换或追加；remove 按键删除；set 等同 upsert。
  */
-import type { FieldValue, GenericEntry, StateChange, StateDelta, StateEntry, StateSnapshot } from '../types/demo.ts';
+import type {
+  ArpCacheEntry,
+  FieldValue,
+  GenericEntry,
+  OspfNeighborEntry,
+  StateChange,
+  StateDelta,
+  StateEntry,
+  StateSnapshot,
+  TcpStateEntry,
+} from '../types/demo.ts';
 
 function clone<T>(v: T): T {
   return structuredClone(v);
@@ -41,12 +52,14 @@ function applyChange(table: string, op: string, entry: StateEntry, list: StateEn
       }
       const idx = list.findIndex((x) => !isGeneric(x) && (x as { ip?: unknown }).ip === e.ip);
       if (op === 'upsert') {
-        const next = { ip: e.ip, mac: e.mac, state: e.state };
+        const next: ArpCacheEntry = { ip: e.ip, state: e.state };
+        if (e.mac !== undefined) next.mac = e.mac;
         if (idx >= 0) list[idx] = next;
         else list.push(next);
       } else if (op === 'expire') {
+        // expire 描述「已有条目老化」：条目不存在时 no-op，不得凭空创建 stale 条目。
+        // （依据 demo-event-model.md §4.2「每个 delta 只描述终态」——没有条目就没有终态可描述）
         if (idx >= 0) list[idx] = { ip: e.ip, state: 'stale' };
-        else list.push({ ip: e.ip, state: 'stale' });
       }
       return;
     }
@@ -64,13 +77,19 @@ function applyChange(table: string, op: string, entry: StateEntry, list: StateEn
       else list.push({ vlan: e.vlan, mac: e.mac, port: e.port });
       return;
     }
-    case 'tcp-state':
-    case 'ospf-neighbor': {
-      const e = entry as { peer: string };
+    case 'tcp-state': {
+      const e = entry as TcpStateEntry;
+      // from 只用于核对（demo-event-model.md §4.2），终态仅保留 peer + to
+      const next: TcpStateEntry = { peer: e.peer, to: e.to };
       const idx = list.findIndex((x) => !isGeneric(x) && (x as { peer?: unknown }).peer === e.peer);
-      const next = table === 'tcp-state'
-        ? { peer: e.peer, to: (entry as { to: string }).to }
-        : { peer: e.peer, to: (entry as { to: string }).to };
+      if (idx >= 0) list[idx] = next;
+      else list.push(next);
+      return;
+    }
+    case 'ospf-neighbor': {
+      const e = entry as OspfNeighborEntry;
+      const next: OspfNeighborEntry = { peer: e.peer, to: e.to };
+      const idx = list.findIndex((x) => !isGeneric(x) && (x as { peer?: unknown }).peer === e.peer);
       if (idx >= 0) list[idx] = next;
       else list.push(next);
       return;
@@ -84,10 +103,10 @@ function applyChange(table: string, op: string, entry: StateEntry, list: StateEn
         if (idx >= 0) list.splice(idx, 1);
         return;
       }
-      // upsert / set：按键替换或追加
+      // upsert / set：按键替换或追加。clone 避免输出与输入 delta 共享嵌套对象（纯度）
       const idx = list.findIndex((x) => genericKey(asGeneric(x)) === key);
-      if (idx >= 0) list[idx] = { ...e };
-      else list.push({ ...e });
+      if (idx >= 0) list[idx] = clone(e);
+      else list.push(clone(e));
       return;
     }
   }

@@ -4,7 +4,7 @@
  * 分层（docs/validation-rules.md §1）：
  *   L1 结构校验   —— Zod schema（src/schemas/*），单文件字段/枚举/形状
  *   L2 跨引用校验 —— 本脚本 X1–X14（跨文件/跨对象，Zod 不查图）
- *   L3 发布门禁   —— 本脚本 P1–P6（仅当 status = published）
+ *   L3 发布门禁   —— 本脚本 P1–P7（仅当 status = published）
  *
  * 校验对象：
  *   1. 夹具样例 docs/sample-demos/*.json（始终校验，作为回归基准）
@@ -14,7 +14,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DemoSchema } from '../src/schemas/demo.schema.ts';
 import { KnowledgePointSchema } from '../src/schemas/knowledge.schema.ts';
 import { SourceSchema } from '../src/schemas/source.schema.ts';
@@ -23,7 +23,7 @@ import { deepFreeze, foldState, snapshotsEqual } from '../src/engine/fold-state.
 import { KNOWN_GENERIC_TABLES, RESERVED_STATE_TABLES } from '../src/schemas/demo.schema.ts';
 import type { ContentState, KnowledgePoint } from '../src/types/knowledge.ts';
 import type { Source } from '../src/types/source.ts';
-import type { Demo, DemoEvent, DemoScenario, StateDelta, Topology } from '../src/types/demo.ts';
+import type { BroadcastDomain, Demo, DemoEvent, DemoScenario, Device, DeviceRole, StateDelta, Topology } from '../src/types/demo.ts';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const FIXTURE_DIR = path.join(ROOT, 'docs', 'sample-demos');
@@ -69,8 +69,9 @@ function l1Parse<T>(schema: { safeParse: (v: unknown) => { success: boolean; dat
 function validateDemoScenarios(demo: Demo, file: string): void {
   const topo: Topology = demo.topology;
   const deviceIds = new Set(topo.participants.map((d) => d.id));
+  const participantsById = new Map(topo.participants.map((d) => [d.id, d] as const));
   const domainIds = new Set(topo.domains.map((d) => d.id));
-  const domainById = new Map(topo.domains.map((d) => [d.id, d]));
+  const domainById = new Map(topo.domains.map((d) => [d.id, d] as const));
 
   // 设备 id 唯一
   if (deviceIds.size !== topo.participants.length) {
@@ -167,7 +168,7 @@ function validateDemoScenarios(demo: Demo, file: string): void {
       }
 
       for (const ev of step.events) {
-        validateEventShape(ev, step.id, sLabel, file, deviceIds, domainById);
+        findings.push(...validateEventShape(ev, step.id, sLabel, file, participantsById, domainById));
         // X8：StateDelta 通用表白名单
         for (const delta of step.stateDeltas) {
           for (const change of delta.changes) {
@@ -230,58 +231,96 @@ function validateDemoScenarios(demo: Demo, file: string): void {
   return void allDemoEventIds; // 场景级唯一已保证；全库唯一在跨文件处统计
 }
 
-/** L1 形状约束（validation-rules.md §2）：kind 与 TargetSpec/payload 的搭配。 */
-function validateEventShape(
+/**
+ * 多播接收者推导（N1）：域成员中 role ∈ roleFilter 且 id ≠ from 的设备。
+ * 设计语义（demo-event-model.md §2.2）：多播是「域内按角色过滤的子集」；与广播一致，
+ * 发送方自身不计入接收者（广播写明「域内除 from 外全部」，多播沿用同一约定）。
+ * 空数组 = 域内没有符合条件的设备，由 validateEventShape 报 ERROR——
+ * 此时动画没有任何接收者，属数据错误而非可容忍的退化情况。
+ */
+export function multicastRecipients(
+  domain: Pick<BroadcastDomain, 'members'>,
+  participantsById: ReadonlyMap<string, Device>,
+  roleFilter: readonly DeviceRole[],
+  from: string,
+): string[] {
+  return domain.members.filter((id) => {
+    if (id === from) return false;
+    const role = participantsById.get(id)?.role;
+    return role !== undefined && roleFilter.includes(role);
+  });
+}
+
+/** L1 形状约束（validation-rules.md §2）：kind 与 TargetSpec/payload 的搭配。返回诊断，不直接写全局 findings（便于独立测试）。 */
+export function validateEventShape(
   ev: DemoEvent,
   stepId: string,
   sLabel: string,
   file: string,
-  deviceIds: Set<string>,
-  domainById: Map<string, { members: string[] }>,
-): void {
+  participantsById: ReadonlyMap<string, Device>,
+  domainById: ReadonlyMap<string, BroadcastDomain>,
+): Finding[] {
+  const out: Finding[] = [];
+  const err = (rule: string, msg: string) => out.push({ file, rule, msg, severity: 'ERROR' });
+  const warn = (rule: string, msg: string) => out.push({ file, rule, msg, severity: 'WARN' });
   const ctx = `${sLabel} 步骤 ${stepId} 事件 ${ev.id}`;
   // X6：from
-  if (!deviceIds.has(ev.from)) err(file, 'X6', `${ctx}: from "${ev.from}" 不在 participants 中`);
+  if (!participantsById.has(ev.from)) err('X6', `${ctx}: from "${ev.from}" 不在 participants 中`);
   // X6：to 的设备/域引用
   if (ev.to.kind === 'device') {
-    if (!deviceIds.has(ev.to.id)) err(file, 'X6', `${ctx}: to 设备 "${ev.to.id}" 不在 participants 中`);
+    if (!participantsById.has(ev.to.id)) err('X6', `${ctx}: to 设备 "${ev.to.id}" 不在 participants 中`);
   } else {
     if (!domainById.has(ev.to.domain)) {
-      err(file, 'X6', `${ctx}: ${ev.to.kind} 域 "${ev.to.domain}" 不在 topology.domains 中`);
+      err('X6', `${ctx}: ${ev.to.kind} 域 "${ev.to.domain}" 不在 topology.domains 中`);
     } else {
       const domain = domainById.get(ev.to.domain);
       const members = domain?.members ?? [];
       if (ev.to.kind === 'broadcast') {
         for (const ex of ev.to.excludeFrom ?? []) {
-          if (!deviceIds.has(ex)) err(file, 'X6', `${ctx}: excludeFrom "${ex}" 不在 participants 中`);
-          if (!members.includes(ex)) warn(file, 'X6', `${ctx}: excludeFrom "${ex}" 不属于域 ${ev.to.domain}（排除无效）`);
+          if (!participantsById.has(ex)) err('X6', `${ctx}: excludeFrom "${ex}" 不在 participants 中`);
+          if (!members.includes(ex)) warn('X6', `${ctx}: excludeFrom "${ex}" 不属于域 ${ev.to.domain}（排除无效）`);
         }
       }
       if (ev.to.kind === 'multicast') {
-        const hit = members.filter((m) => {
-          const dev = m; // 角色过滤在拓扑中核对
-          return dev !== undefined;
-        }).length;
-        if (hit === 0) warn(file, 'X6', `${ctx}: 多播域 ${ev.to.domain} 没有成员（角色过滤后接收者为空集）`);
+        // roleFilter 中没有任何成员具备的角色：可能是拓扑角色写错或域成员缺失，先给诊断
+        for (const role of ev.to.roleFilter) {
+          if (!members.some((m) => participantsById.get(m)?.role === role)) {
+            warn('X6', `${ctx}: roleFilter 角色 "${role}" 在域 ${ev.to.domain} 内没有任何设备具备`);
+          }
+        }
+        const recipients = multicastRecipients({ members }, participantsById, ev.to.roleFilter, ev.from);
+        if (recipients.length === 0) {
+          err(
+            'X6',
+            `${ctx}: 多播接收者为空——域 ${ev.to.domain} 内没有角色 ∈ {${ev.to.roleFilter.join(', ')}} 且非发送方 ${ev.from} 的设备（动画将没有任何接收者）`,
+          );
+        }
       }
     }
   }
   // kind 形状约束
   if (ev.kind === 'process') {
     if (ev.to.kind !== 'device' || ev.to.id !== ev.from) {
-      err(file, 'L1-shape', `${ctx}: process 事件要求 to 为自身设备（to.kind='device' 且 to.id===from）`);
+      err('L1-shape', `${ctx}: process 事件要求 to 为自身设备（to.kind='device' 且 to.id===from）`);
     }
-    if (ev.payload != null) err(file, 'L1-shape', `${ctx}: process 事件不得携带 payload`);
+    if (ev.payload != null) err('L1-shape', `${ctx}: process 事件不得携带 payload`);
   }
   if (ev.kind === 'unicast' && ev.to.kind !== 'device') {
-    err(file, 'L1-shape', `${ctx}: unicast 事件要求 to.kind='device'`);
+    err('L1-shape', `${ctx}: unicast 事件要求 to.kind='device'`);
   }
   if ((ev.kind === 'broadcast' || ev.kind === 'multicast') && ev.to.kind === 'device') {
-    err(file, 'L1-shape', `${ctx}: ${ev.kind} 事件要求 to.kind 为 ${ev.kind}`);
+    err('L1-shape', `${ctx}: ${ev.kind} 事件要求 to.kind 为 ${ev.kind}`);
+  }
+  if (ev.kind === 'broadcast' && ev.to.kind === 'multicast') {
+    err('L1-shape', `${ctx}: broadcast 事件不得使用 multicast 目标`);
+  }
+  if (ev.kind === 'multicast' && ev.to.kind === 'broadcast') {
+    err('L1-shape', `${ctx}: multicast 事件必须使用带 roleFilter 的 multicast 目标`);
   }
   if (ev.kind !== 'process' && ev.kind !== 'drop' && ev.payload == null) {
-    err(file, 'L1-shape', `${ctx}: ${ev.kind} 事件必须携带 payload`);
+    err('L1-shape', `${ctx}: ${ev.kind} 事件必须携带 payload`);
   }
+  return out;
 }
 
 /* ================= 知识点 / 来源（存在即校验） ================= */
@@ -363,6 +402,12 @@ const PUBLISHABLE_CONTENT_STATE = new Set<ContentState>(['original', 'adapted', 
 export function knowledgePublishGates(k: KnowledgePoint, sources: Map<string, Source>, today: string): GateViolation[] {
   const out: GateViolation[] = [];
   if (k.status !== 'published') return out;
+  // P7（N3，2026-11-12）：published 必须至少关联 1 条来源。
+  // 依据：计划书要求「教材解释知识、标准保证准确」，无来源的 published 内容无法追溯核对；
+  // draft 允许无来源（尚未进入审核），review 允许挂着待确认来源（来源不满足只影响能否发布）。
+  if (k.sourceRefs.length === 0) {
+    out.push({ level: 'P7', msg: `${k.id} status=published 但没有任何 sourceRef——published 内容至少需关联 1 条来源（draft 可空，review 可待确认）` });
+  }
   // P1：checkedAt 非空且 ≤ 今天；sections 为空需 verificationNote 说明
   for (const ref of k.sourceRefs) {
     if (ref.checkedAt > today) out.push({ level: 'P1', msg: `${k.id} 引用 ${ref.sourceId} 的 checkedAt 晚于今天` });
@@ -453,6 +498,11 @@ function selftest(): void {
   const fakeK = { id: 'NET-04-99', status: 'published', contentState: 'original', sourceRefs: [{ sourceId: 's-bad', purpose: 'p', sections: ['1'], checkedAt: '2026-01-01' }], demoRefs: [] } as unknown as KnowledgePoint;
   const v = knowledgePublishGates(fakeK, fakeSources, '2026-11-12');
   if (!v.some((x) => x.level === 'P2')) err(file, 'SELFTEST', '发布门禁未能拦截 pending 来源');
+  // P7（N3）：published 但没有任何来源 → 必须拦截；draft 无来源 → 不拦
+  const noSrc = knowledgePublishGates({ ...fakeK, sourceRefs: [] } as unknown as KnowledgePoint, fakeSources, '2026-11-12');
+  if (!noSrc.some((x) => x.level === 'P7')) err(file, 'SELFTEST', 'P7 未拦截「published 且无来源」');
+  const draftNoSrc = knowledgePublishGates({ ...fakeK, status: 'draft', sourceRefs: [] } as unknown as KnowledgePoint, fakeSources, '2026-11-12');
+  if (draftNoSrc.length !== 0) err(file, 'SELFTEST', 'draft 无来源不应触发发布门禁');
   // P6：来源失效联动
   const demoted = demoteOnSourceRetired([fakeK], 's-bad', 'pending');
   if (demoted.length !== 1) err(file, 'SELFTEST', 'P6 来源失效联动未命中');
@@ -511,7 +561,7 @@ function main(): void {
       for (const v of demoPublishGates(d.id, knowledge)) err(`demo:${d.id}`, v.level, v.msg);
     }
   } else {
-    info('content/', 'L3', '尚无 knowledge/sources 落地数据——X1/X2/X3/X11 与发布门禁 P1–P6 待数据就绪后自动启用（规则已实现并经内建自测）');
+    info('content/', 'L3', '尚无 knowledge/sources 落地数据——X1/X2/X3/X11 与发布门禁 P1–P7 待数据就绪后自动启用（规则已实现并经内建自测）');
   }
 
   /* ---- 输出 ---- */
@@ -528,4 +578,15 @@ function main(): void {
   if (errors.length > 0) process.exit(1);
 }
 
-main();
+/** 仅直接运行（node scripts/validate-content.mts）时执行全量校验；
+ *  被测试脚本 import 时不触发，避免副作用与重复输出。 */
+const invokedDirectly = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(path.resolve(entry)).href;
+  } catch {
+    return false;
+  }
+})();
+if (invokedDirectly) main();

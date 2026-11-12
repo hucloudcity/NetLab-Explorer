@@ -44,7 +44,7 @@ npm start        # 服务项目根目录（端口 8091，避免与完整版 8090
 ## 校验
 
 ```bash
-npm run check    # 六段：内容契约 + IsoKit 渲染回归 + 动效回归 + 部署路径自检 + tsc --noEmit（数据模型类型）+ validate-content（L1 Zod / L2 跨引用 / L3 发布门禁）
+npm run check    # 六段：内容契约 + IsoKit 渲染回归 + 动效回归 + 部署路径自检 + tsc --noEmit（数据模型类型）+ 内容校验与数据模型测试（L1 Zod / L2 跨引用 / L3 发布门禁 P1–P7 / 65 项独立测试）
 node .openai/smoke-runtime.cjs   # jsdom 运行时冒烟（需先启动 npm start）
 node .openai/shot-tcp.cjs        # 截图（puppeteer-core + 本机 Chrome）
 ```
