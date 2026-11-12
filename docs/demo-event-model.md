@@ -106,6 +106,8 @@ interface Packet {
 
 `fields` 是展示与核对用，**不是计算输入**。flags 用字符串数组（`['SYN']`、`['SYN','ACK']`）而非位运算，因为固定动画不做位计算。
 
+**值域调整（M1 落地时确认，2026-11-12）**：字段值域由 `string | number | boolean` 扩展为递归的 `FieldValue = string | number | boolean | null | FieldValue[] | { [k]: FieldValue }`。理由：① `null` 是有语义的「字段在本报文中不存在」（如首个 SYN 的 `ack: null`），与缺省不同；② DNS 资源记录（`answers: [{name,type,rdata,ttl}]`）天然是结构化数组，扁平化会丢信息。详见 `docs/m1-implementation.md` §三。
+
 ## 三、执行调度：顺序、并行与依赖
 
 ### 3.1 依赖图与波次（waves）

@@ -25,10 +25,11 @@ L1 用 Zod（迁移时在 package.json 显式声明直接依赖，ADR-001）；L
 - Step/DemoEvent/StateDelta/TargetSpec/Packet/TraceRow 按 demo-event-model.md §2–5 的形状：
   - `event.kind ∈ {unicast, broadcast, multicast, process, drop}`；
   - `TargetSpec.kind ∈ {device, broadcast, multicast}`；
-  - `event.kind = 'process'` ⇒ `payload` 缺省、`to.kind = 'device'` 且 `to.id === from`；
+  - `event.kind = 'process'` ⇒ `payload` 缺省或 null、`to.kind = 'device'` 且 `to.id === from`；
   - `event.kind ∈ {unicast, broadcast, multicast}` ⇒ 必有 payload；
   - `tcp-state.entry.to ∈ RFC 9293 状态名枚举`；`ospf-neighbor.entry.to ∈ RFC 2328 八态枚举`；
-  - `dependsOn` 与 `afterEvent` 引用格式合法（字符串、非空）。
+  - `dependsOn` 与 `afterEvent` 引用格式合法（字符串、非空）；
+  - Packet/StateChange 条目值域为递归 `FieldValue`（允许 null 与嵌套，见 demo-event-model.md §2.3 的 M1 调整注记）。
 - **环与波次**：Zod 不查图（超出能力），环检测归 L2。
 
 ## 三、L2 跨引用校验（自研脚本，跨文件）
@@ -78,4 +79,5 @@ L1 用 Zod（迁移时在 package.json 显式声明直接依赖，ADR-001）；L
 ## 六、验收基线
 
 - 三份样例（`docs/sample-demos/`）已按 X4/X5 规则脚本化预检通过（2026-11-12）。
-- M1 落地时：上述规则全部脚本化，`npm run check` 扩展为 `check-content + check-isokit + check-motion + validate-content` 四段；样例作为 validate-content 的第一个测试夹具。
+- ~~M1 落地时：上述规则全部脚本化，`npm run check` 扩展为 `check-content + check-isokit + check-motion + validate-content` 四段；样例作为 validate-content 的第一个测试夹具。~~
+- ✅ **已落地（M1，2026-11-12）**：`npm run check` 为六段——`check-content + check-isokit + check-motion + check-paths + tsc --noEmit + validate-content`；L1 用 `src/schemas/*`（zod 直接依赖），L2/L3 在 `scripts/validate-content.mts`；样例即首个测试夹具；门禁内核经内建自测（published×pending 来源被拦截、P6 联动命中）。实现对应关系见 `docs/m1-implementation.md`。

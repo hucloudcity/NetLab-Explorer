@@ -1,18 +1,24 @@
 {
   "name": "tcp-lifecycle-explorer",
+  "type": "module",
   "private": true,
   "version": "1.0.0",
   "scripts": {
     "start": "python -m http.server 8091",
     "build": "node scripts/build.mjs",
-    "check": "node check-content.cjs && node check-isokit.cjs && node check-motion.cjs && node scripts/check-paths.cjs"
+    "check": "node check-content.cjs && node check-isokit.cjs && node check-motion.cjs && node scripts/check-paths.cjs && npm run check:types && npm run check:content-data",
+    "check:types": "tsc --noEmit",
+    "check:content-data": "node scripts/validate-content.mts"
   },
   "dependencies": {
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-isokit": "0.5.0"
+    "react-isokit": "0.5.0",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "esbuild": "0.28.2"
   }
 }

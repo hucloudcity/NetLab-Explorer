@@ -83,6 +83,7 @@
         {
           "id": "root-referral",
           "title": "④ 根返回顶级域推荐",
+          "description": "根服务器不解析具体域名，只返回 .example 顶级域服务器的推荐（Referral）。迭代查询的每一步都是'问路'，不是'代办'。",
           "events": [
             { "id": "e-a2", "kind": "unicast", "from": "root",
               "to": { "kind": "device", "id": "local-dns" },

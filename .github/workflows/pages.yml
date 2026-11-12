@@ -29,6 +29,10 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Check JavaScript
         run: node --check src/app/app.js
+      - name: Type-check data model (tsc --noEmit)
+        run: npx tsc --noEmit
+      - name: Validate content data (L1 Zod + L2 cross-refs + L3 gates)
+        run: node scripts/validate-content.mts
       - name: Run content, rendering, and motion checks
         run: npm run check
       - name: Build local assets
