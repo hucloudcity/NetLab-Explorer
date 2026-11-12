@@ -25,10 +25,11 @@
 
 ## 三、里程碑
 
-### M0 — 源文件归位（半天级，纯移动）
-- `dist/app.js|data.js|mechanisms.js|index.html|styles.css|scene-motion.css|isokit.css` → `src/app/` + `content/`（data/mechanisms 归 content）。
-- `index.html` 资源引用路径更新；`npm start`、校验脚本、冒烟脚本路径同步更新。
-- **验收**：页面行为与迁移前逐像素一致；`npm run check` 三绿。
+### M0 — 源文件归位（半天级，纯移动）— ✅ 已完成 2026-11-12（commit 6213681 + e1e00e4）
+- `dist/app.js|index.html|styles.css|scene-motion.css|favicon.svg|icons.svg` → `src/app/`；`dist/data.js|mechanisms.js` → `content/`；`dist/accuracy-audit.md` → `docs/`。
+- **修正**：`isokit.css` 实为构建产物（删除后 `npm run build` 自动重建），保留在 `dist/`，index.html 以 `/dist/isokit.css` 引用。
+- 引用改为根绝对路径（`/content/*`、`/dist/isokit.css`），`npm start` 服务项目根，页面入口 `http://127.0.0.1:8091/src/app/`；校验/冒烟/截图脚本与 CI（Pages 装配 `_site`）同步更新。
+- **验收结果**：`npm run check` 三绿；冒烟 `runtime errors: none`（主流程 14 行、故障场景 alternate 4 行）；四场景截图与基线逐像素 0 差异。
 
 ### M1 — 类型与校验器落地（1 天级）
 - `src/types/{knowledge,source,demo}.ts`（按 data-model-design.md / demo-event-model.md 定稿的类型）。
