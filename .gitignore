@@ -8,6 +8,9 @@ node_modules/
 # CI 装配产物（GitHub Pages 上传目录，由 workflow 生成）
 _site/
 
+# 构建期视图数据（由 scripts/build-data.mts 从 content/*.json 生成，内容真相只在 JSON）
+dist/netlab-data.js
+
 # 系统文件
 .DS_Store
 Thumbs.db

@@ -5,20 +5,23 @@
 <meta name="theme-color" content="#8052c7"><meta name="description" content="TCP 连接全流程交互式演示：三次握手、数据传输、丢包与快速重传、四次挥手，逐步查看每个报文的方向、地址与大小。">
 <title>TCP 连接全流程 · 交互式演示</title>
 <link rel="icon" href="./favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="../../dist/isokit.css?v=20261112-5"><link rel="stylesheet" href="./styles.css?v=20261112-5"><link rel="stylesheet" href="./scene-motion.css?v=20261112-5">
-<script defer src="../../content/data.js?v=20261112-5"></script><script defer src="../../content/mechanisms.js?v=20261112-5"></script><script defer src="../../dist/isokit.js?v=20261112-5"></script><script defer src="./app.js?v=20261112-5"></script>
+<script defer src="../../dist/netlab-data.js?v=20261112-6"></script><script defer src="../../content/mechanisms.js?v=20261112-6"></script><script defer src="../../dist/isokit.js?v=20261112-6"></script><script defer src="./app.js?v=20261112-6"></script>
 </head>
 <body>
 <a class="skip" href="#main">跳到机制演示</a>
 <header class="topbar">
  <button id="menu" class="icon-button mobile" aria-label="打开演示流程"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#menu"/></svg></button>
  <a class="brand" href="#tcp" aria-label="TCP 连接全流程演示首页"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3 43 13 24 23 5 13Z M5 20 24 30 43 20 M5 28 24 38 43 28 M5 13v22l19 10 19-10V13 M24 23v22"/></svg><span><b>TCP <em>LIFECYCLE</em></b><small>连接全流程 · 交互式演示</small></span></a>
- <div class="now"><small>网络协议 · 单主题演示</small><strong id="current-title">TCP 连接全流程</strong></div>
+ <div class="now"><small>网络协议 · 单主题演示<span id="current-no" hidden>01 / 01</span></small><strong id="current-title">TCP 连接全流程</strong></div>
+ <nav id="parts" class="parts" aria-label="课程分组导航" hidden></nav>
  <div class="progress"><div><small>学习进度</small><strong id="progress-number">0 / 1</strong></div><div class="progress-track"><span id="progress-bar"></span></div></div>
  <button id="theme" class="icon-button" aria-label="切换深色主题" title="切换主题"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#moon"/></svg></button>
 </header>
 <div class="workspace">
  <aside class="sidebar panel" id="sidebar" aria-label="演示流程">
-  <div class="panel-head"><h2>演示流程 <span>14 步</span></h2></div>
+  <div class="panel-head"><h2>演示流程 <span>14 步</span></h2><button id="all-topics" class="text-button" title="显示全部课程" hidden>全部</button></div>
+  <div class="search-wrap" id="search-wrap" hidden><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#search"/></svg><input id="search" type="search" placeholder="搜索课程、问题…" aria-label="搜索课程"><kbd>/</kbd></div>
+  <div class="filter-row" id="filter-row" role="group" aria-label="筛选分组" hidden></div>
   <div id="topic-list" class="topic-list"></div>
   <div class="sidebar-foot"><span class="live-dot"></span> 握手 · 传输 · 重传 · 挥手 <button id="about" aria-label="查看内容来源说明"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="./icons.svg#info"/></svg></button></div>
  </aside>

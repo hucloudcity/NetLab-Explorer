@@ -35,6 +35,11 @@ export interface Device {
   id: string;
   /** 展示名，如 '笔记本电脑' */
   label: string;
+  /**
+   * 状态文案里的短名（如 'Web 服务器' → '服务端'）。
+   * 缺省回退 `label`；只影响状态观察文案，不改图形标签。
+   */
+  stateLabel?: string;
   role: DeviceRole;
   kind: DeviceKind;
   /** 展示地址（静态数据，不参与计算） */
@@ -241,6 +246,16 @@ export interface Step {
   title: string;
   /** 逐步详解（对应 stepNotes，迁入） */
   description: string;
+  /**
+   * 信号行（表格「信息」列的短写法，如 'SYN Seq=0'）。
+   * 缺省回退 `events[0].payload.summary`；两者皆无 = 数据缺信号，适配层报错。
+   */
+  signal?: string;
+  /**
+   * 场景字幕（画布下方一行解释）。与 `description`（逐步详解）是两段不同文本。
+   * 缺省回退 `description`。
+   */
+  caption?: string;
   /** 本步骤全部事件（≥1） */
   events: DemoEvent[];
   /** 本步骤状态变化（可空数组） */

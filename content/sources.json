@@ -1,0 +1,26 @@
+[
+  {
+    "sourceId": "rfc-9293",
+    "type": "rfc",
+    "name": "IETF · RFC 9293 (Transmission Control Protocol)",
+    "description": "TCP 现行规范：连接建立、终止与状态机的权威定义。",
+    "author": "W. Eddy (Ed.)",
+    "version": "RFC 9293",
+    "url": "https://www.rfc-editor.org/rfc/rfc9293",
+    "licenseStatus": "public-standard",
+    "licenseNote": "IETF 公开标准，可引用条款编号与语义；不复刻原文段落。",
+    "addedAt": "2026-11-12"
+  },
+  {
+    "sourceId": "csapp-3e",
+    "type": "textbook",
+    "name": "CMU 15-213 · Computer Systems",
+    "description": "系统、内存层次、虚拟内存与并发编程",
+    "author": "Randal E. Bryant, David R. O'Hallaron",
+    "version": "3rd Edition",
+    "url": "https://csapp.cs.cmu.edu/3e/curriculum.html",
+    "licenseStatus": "copyright-textbook",
+    "licenseNote": "教材：只作背景核对与原创表述，不复制正文、插图与习题。",
+    "addedAt": "2026-11-12"
+  }
+]

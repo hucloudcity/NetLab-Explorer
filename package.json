@@ -4,11 +4,11 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "start": "python -m http.server 8091",
-    "build": "node scripts/build.mjs",
-    "check": "node check-content.cjs && node check-isokit.cjs && node check-motion.cjs && node scripts/check-paths.cjs && npm run check:types && npm run check:content-data",
+    "start": "node scripts/build-data.mts && python -m http.server 8091",
+    "build": "node scripts/build-data.mts && node scripts/build.mjs",
+    "check": "node scripts/build-data.mts && node scripts/check-content.mts && node check-isokit.cjs && node check-motion.cjs && node scripts/check-paths.cjs && npm run check:types && npm run check:content-data",
     "check:types": "tsc --noEmit",
-    "check:content-data": "node scripts/validate-content.mts && node scripts/test-data-model.mts"
+    "check:content-data": "node scripts/validate-content.mts && node scripts/test-data-model.mts && node scripts/test-view-model.mts"
   },
   "dependencies": {
     "react": "19.3.1",

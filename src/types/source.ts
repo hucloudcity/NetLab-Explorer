@@ -24,6 +24,11 @@ export interface Source {
   type: SourceType;
   /** 如 'Transmission Control Protocol' */
   name: string;
+  /**
+   * 来源卡片上的一句说明（「该来源在教学里起什么作用」）。
+   * 缺省则不渲染说明行；与 `licenseNote`（授权约束）语义不同，不可互换。
+   */
+  description?: string;
   /** 如 'W. Eddy (Ed.)' 或 'Kurose & Ross' */
   author: string;
   /** 如 'RFC 9293' / '9th Edition' / 'IEEE 802.1Q-2022' */

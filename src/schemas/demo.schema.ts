@@ -53,6 +53,8 @@ const DeviceSchema: z.ZodType<Device> = z
   .object({
     id: z.string().min(1),
     label: z.string().min(1),
+    // M2-A 冻结例外：状态文案短名（缺省回退 label），只影响适配层拼句
+    stateLabel: z.string().min(1).optional(),
     role: z.enum(['host', 'switch', 'router', 'server', 'resolver', 'gateway', 'ap']),
     kind: z.enum(['laptop', 'router', 'cloud', 'server', 'switch', 'ap', 'generic']),
     address: z
@@ -319,6 +321,9 @@ const StepSchema: z.ZodType<Step> = z
     id: z.string().min(1),
     title: z.string().min(1),
     description: z.string().min(1),
+    // M2-A 冻结例外：信号行（缺省回退 events[0].payload.summary）与场景字幕（缺省回退 description）
+    signal: z.string().min(1).optional(),
+    caption: z.string().min(1).optional(),
     events: z.array(DemoEventSchema).min(1),
     stateDeltas: z.array(StateDeltaSchema),
     traceRow: TraceRowSchema.nullish(),

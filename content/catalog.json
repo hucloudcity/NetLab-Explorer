@@ -1,0 +1,22 @@
+{
+  "groups": [
+    {
+      "id": "network",
+      "name": "网络协议",
+      "en": "NETWORK PROTOCOLS",
+      "color": "#8052c7",
+      "dark": "#b79aeb",
+      "question": "在不可靠的网络上，一条连接如何可靠地建立、传输与关闭？"
+    }
+  ],
+  "courses": [
+    {
+      "demoId": "tcp-lifecycle",
+      "knowledgeId": "NET-04-08",
+      "groupId": "network",
+      "hash": "tcp",
+      "titleEn": "TCP CONNECTION LIFECYCLE",
+      "order": 1
+    }
+  ]
+}

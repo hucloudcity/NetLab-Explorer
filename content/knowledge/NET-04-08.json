@@ -1,0 +1,46 @@
+{
+  "id": "NET-04-08",
+  "title": "TCP 连接生命周期：三次握手、可靠传输与四次挥手",
+  "categoryId": "M04",
+  "level": "basic",
+  "summary": "一条 TCP 连接的一生：三次握手建立连接，传输数据，一段响应丢失后靠重复确认与 SACK 快速重传补齐，最后四次挥手有序关闭。",
+  "what": "TCP 是面向连接的可靠字节流协议。一条连接从 CLOSED 出发，经三次握手进入 ESTABLISHED，数据在双向序列号与确认号的约束下按序交付，最后经四次挥手各自关闭发送方向，主动关闭方在 TIME_WAIT 停留 2×MSL 后彻底释放。",
+  "why": "握手用一次往返延迟换来按序可靠交付；半连接队列是这一设计的固有暴露面。",
+  "principle": "可靠连接建立在双向序列号确认上：每个方向独立编号、独立确认、独立关闭。",
+  "practicalScenario": "浏览器访问 HTTPS 站点、数据库客户端连库、微服务之间的长连接调用，底层都是这条生命周期：建立时一次 RTT，传输时靠累积确认与重传补齐缺口，关闭时两个方向各自挥手。高并发短连接服务里大量 TIME_WAIT 属于常态，需要的是端口规划而不是关掉它。",
+  "commonProblems": [
+    "第三次 ACK 迟迟不来时，服务端会滞留在半连接状态并反复重传；大量伪造源地址的 SYN 会占满半连接队列，这就是 SYN Flood 的原理。"
+  ],
+  "relatedKnowledge": [],
+  "sourceRefs": [
+    {
+      "sourceId": "rfc-9293",
+      "purpose": "核对三次握手/四次挥手的标志位、序列号与确认号语义、状态迁移",
+      "sections": [
+        "3.5",
+        "3.6",
+        "3.10"
+      ],
+      "checkedAt": "2026-11-12",
+      "verificationNote": "按 RFC 9293 第 3 章逐节比对状态名与报文语义；教学序列号与时间为示例值，不对应真实抓包。"
+    },
+    {
+      "sourceId": "csapp-3e",
+      "purpose": "客户端—服务器编程模型与连接生命周期的系统背景",
+      "sections": [
+        "11.1",
+        "11.3"
+      ],
+      "checkedAt": "2026-11-12",
+      "verificationNote": "只作背景核对，正文为原创表述，未复制教材文字或插图。"
+    }
+  ],
+  "demoRefs": [
+    "tcp-lifecycle"
+  ],
+  "accessLevel": "free",
+  "status": "published",
+  "contentState": "original",
+  "createdAt": "2026-11-12",
+  "updatedAt": "2026-11-12"
+}

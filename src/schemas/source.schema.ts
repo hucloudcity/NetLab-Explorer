@@ -26,6 +26,8 @@ const SourceSchema: z.ZodType<Source> = z
     sourceId: z.string().min(1),
     type: SourceTypeSchema,
     name: z.string().min(1),
+    // M2-A 冻结例外：来源卡片说明行（缺省不渲染；与 licenseNote 语义不同）
+    description: z.string().min(1).optional(),
     author: z.string().min(1),
     version: z.string().optional(),
     // 官方地址必须 https（validation-rules.md §2；例外白名单：无）
