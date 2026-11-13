@@ -15,7 +15,7 @@
  */
 import { foldState } from './fold-state.ts';
 import type { Catalog, CatalogGroup, CourseEntry } from '../types/catalog.ts';
-import type { Demo, DemoEvent, DemoScenario, Device, PacketCat, StateEntry, StateSnapshot, Step, TraceRow } from '../types/demo.ts';
+import type { BroadcastDomain, Demo, DemoEvent, DemoScenario, Device, PacketCat, StateEntry, StateSnapshot, Step, TraceRow } from '../types/demo.ts';
 import type { KnowledgePoint } from '../types/knowledge.ts';
 import type { Source, SourceType } from '../types/source.ts';
 
@@ -60,6 +60,8 @@ export interface LessonView {
   scene: string;
   nodes: string[];
   addresses: string[];
+  /** 各槽位设备的 Device.kind（M2-B G1：渲染器按 kind 选字形；旧链路缺省时索引回退） */
+  kinds: string[];
   /** 逐步详解（14 条） */
   stepNotes: string[];
   net: { main: (TraceRowView | null)[]; alternate: (TraceRowView | null)[] };
@@ -122,6 +124,10 @@ export interface SiteData {
 export function relationOf(ev: DemoEvent, initiatorId: string): RelationKind {
   if (ev.kind === 'drop') return 'lost';
   if (ev.kind === 'process') return 'local';
+  // M2-B G4：广播（ARP Request 等）是真实报文，必须有运动粒子 —— request/data 均为 transfer，
+  // 广播帧统一标 request（语义上是「请求/通告」，不是数据段）；广播语义由数据字段表达
+  //（payload.fields 的 Dst=FF:FF:FF:FF:FF:FF、traceRow.cat='broadcast'），不新增关系枚举。
+  if (ev.kind === 'broadcast') return 'request';
   const cat = ev.payload?.cat;
   if (cat === 'cdata' || cat === 'sdata') return 'data';
   if (cat === 'fin') return /\bFIN\b/i.test(ev.payload?.summary ?? '') ? 'request' : 'data';
@@ -226,16 +232,56 @@ function slotResolver(participants: Device[], demoId: string): (id: string) => n
   };
 }
 
-function targetSlot(ev: DemoEvent, slotOf: (id: string) => number): number {
-  if (ev.to.kind === 'device') return slotOf(ev.to.id);
-  // M2-A 只有单播/本机事件；广播扇出（ARP）与多播留给 M2-B 的适配层扩展。
-  throw new Error(`M2-A 适配层暂不支持 ${ev.to.kind} 目标（事件 ${ev.id}）`);
+/**
+ * 广播接收者推导（M2-B G4）：接收者 = 域成员 − 发送方 − excludeFrom。
+ * 域成员语义 = 「广播域内所有设备」（含交换机/路由器，与既有 TCP 数据的 lan-home 口径一致），
+ * 因此中间转发设备也会出现在推导结果里 —— 这是模型现状，不是缺陷修复对象（缺口已登记）。
+ * 第一阶段动画通过**逐跳 excludeFrom** 控制每跳的直接送达对象，每个事件恰好 1 个接收者。
+ */
+function broadcastRecipients(
+  spec: { domain: string; excludeFrom?: readonly string[] },
+  from: string,
+  domains: BroadcastDomain[],
+  eventId: string,
+): string[] {
+  const dom = domains.find((d) => d.id === spec.domain);
+  if (!dom) throw new Error(`事件 ${eventId}: 广播域 ${spec.domain} 不在 topology.domains 中`);
+  const list = dom.members.filter((id) => id !== from && !(spec.excludeFrom ?? []).includes(id));
+  if (list.length === 0) throw new Error(`事件 ${eventId}: 广播域 ${spec.domain} 排除发送方后没有接收者`);
+  return list;
+}
+
+/**
+ * 事件目标 → 槽位。device 目标直取；broadcast 目标按域推导（M2-B G4），要求唯一接收者
+ *（多接收者的真扇出留给 G3，现阶段显式报错而不是静默丢弃）；multicast 仍不支持。
+ *
+ * 语义红线：frame[1] 只是**动画转发起点**。适配层不改写事件源 —— 交换机转发广播帧的事件
+ * 仍是 `from:'sw'` + broadcast 目标，帧里保留的原始报文头（源 MAC / Sender MAC / Sender IP）
+ * 在 payload.fields 与 traceRow 里原样携带；「转发」不等于「重新生成 ARP Request」。
+ */
+function targetSlot(ev: DemoEvent, ctx: FrameContext): number {
+  if (ev.to.kind === 'device') return ctx.slotOf(ev.to.id);
+  if (ev.to.kind === 'broadcast') {
+    const list = broadcastRecipients(ev.to, ev.from, ctx.domains, ev.id);
+    if (list.length > 1) {
+      throw new Error(
+        `事件 ${ev.id}: 广播有 ${list.length} 个接收者（${list.join(', ')}）；` +
+          'M2-B 第一阶段仅支持单接收者逐跳呈现，多目标扇出留给 G3',
+      );
+    }
+    const only = list[0];
+    if (only === undefined) throw new Error(`事件 ${ev.id}: 广播接收者推导为空`);
+    return ctx.slotOf(only);
+  }
+  throw new Error(`M2-B 适配层暂不支持 ${ev.to.kind} 目标（事件 ${ev.id}）`);
 }
 
 export interface FrameContext {
   slotOf: (id: string) => number;
   initiatorId: string;
   devices: Device[];
+  /** 广播域（broadcast 目标推导用；来自 demo.topology.domains） */
+  domains: BroadcastDomain[];
   scenario: DemoScenario;
   stepIndex: number;
 }
@@ -245,7 +291,7 @@ export function toFrame(step: Step, ctx: FrameContext): Frame7 {
   const ev = step.events[0];
   if (!ev) throw new Error(`步骤 ${step.id} 没有事件（events 至少 1 条）`);
   const from = ctx.slotOf(ev.from);
-  const to = targetSlot(ev, ctx.slotOf);
+  const to = targetSlot(ev, ctx);
   const kind = relationOf(ev, ctx.initiatorId);
 
   const signal = step.signal ?? ev.payload?.summary ?? '';
@@ -314,11 +360,11 @@ function addressText(address: Device['address']): string {
 }
 
 /** 场景 → 帧序列（主流程与备用流程共用）。 */
-function scenarioFrames(scenario: DemoScenario, slotOf: (id: string) => number, devices: Device[]): Frame7[] {
+function scenarioFrames(scenario: DemoScenario, slotOf: (id: string) => number, devices: Device[], domains: BroadcastDomain[]): Frame7[] {
   const initiatorId = scenario.steps[0]?.events[0]?.from;
   if (!initiatorId) throw new Error(`演示场景 ${scenario.id} 第一步没有事件，无法确定发起方`);
   return scenario.steps.map((step, stepIndex) =>
-    toFrame(step, { slotOf, initiatorId, devices, scenario, stepIndex }),
+    toFrame(step, { slotOf, initiatorId, devices, domains, scenario, stepIndex }),
   );
 }
 
@@ -331,12 +377,13 @@ export function buildLesson(demo: Demo, kp: KnowledgePoint, sources: Source[], e
   void sources; // 来源卡片由 buildSite 统一投影；此处只登记 sourceRefs 的 id
   const participants = demo.topology.participants;
   const devices = participants;
+  const domains = demo.topology.domains;
   const slotOf = slotResolver(participants, demo.id);
   const main = demo.scenarios[0];
   if (!main) throw new Error(`演示 ${demo.id} 至少需要一个场景`);
   const alt = demo.scenarios[1];
 
-  const steps = scenarioFrames(main, slotOf, devices);
+  const steps = scenarioFrames(main, slotOf, devices, domains);
   const netMain = scenarioRows(main, demo.id);
   // I1：表格行与步骤等长（缺行用 null 占位，不允许短少）
   if (netMain.length !== steps.length) {
@@ -344,7 +391,7 @@ export function buildLesson(demo: Demo, kp: KnowledgePoint, sources: Source[], e
   }
 
   const alternate: ScenarioView | undefined = alt
-    ? { name: alt.label, nodes: participants.map((d) => d.label), steps: scenarioFrames(alt, slotOf, devices) }
+    ? { name: alt.label, nodes: participants.map((d) => d.label), steps: scenarioFrames(alt, slotOf, devices, domains) }
     : undefined;
   const netAlternate = alt ? scenarioRows(alt, demo.id) : [];
   if (alt && netAlternate.length !== alt.steps.length) {
@@ -361,6 +408,7 @@ export function buildLesson(demo: Demo, kp: KnowledgePoint, sources: Source[], e
     scene: demo.view?.kind ?? demo.topology.layout.view,
     nodes: participants.map((d) => d.label),
     addresses: participants.map((d) => addressText(d.address)),
+    kinds: participants.map((d) => d.kind),
     stepNotes: main.steps.map((s) => s.description),
     net: { main: netMain, alternate: netAlternate },
     steps,

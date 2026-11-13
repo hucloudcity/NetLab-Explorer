@@ -17,9 +17,10 @@ import { DemoSchema } from '../src/schemas/demo.schema.ts';
 import { KnowledgePointSchema } from '../src/schemas/knowledge.schema.ts';
 import { SourceSchema } from '../src/schemas/source.schema.ts';
 import { CatalogSchema } from '../src/schemas/catalog.schema.ts';
-import { buildSite, relationOf, stateLabelAt, toTraceRow } from '../src/engine/view-model.ts';
+import { buildSite, relationOf, stateLabelAt, toTraceRow, toFrame } from '../src/engine/view-model.ts';
+import type { FrameContext } from '../src/engine/view-model.ts';
 import { deepFreeze } from '../src/engine/fold-state.ts';
-import type { Demo, DemoEvent } from '../src/types/demo.ts';
+import type { BroadcastDomain, Demo, DemoEvent, DemoScenario, Device, Step } from '../src/types/demo.ts';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const read = (p: string): unknown => JSON.parse(fs.readFileSync(path.join(ROOT, p), 'utf8'));
@@ -196,4 +197,80 @@ broken.courses[0].demoId = 'missing-demo';
 assert.throws(() => buildSite({ demos: [demo], knowledge: [kp], sources, catalog: broken }), /I9/, 'G1 目录指向不存在的演示时报 I9');
 n++;
 
-console.log(`view-model tests passed: ${n} assertions (18 state labels, 12 relation cases, null-row placeholder, I2/I3/I6/I9 negative paths).`);
+/* ================= H 广播逐跳（M2-B G4） ================= */
+// 3 设备 ARP 拓扑（主机 A / 交换机 / 主机 B）：域成员含交换机（与 TCP lan-home 口径一致）。
+const arpDevices: Device[] = [
+  { id: 'a', label: '主机 A', role: 'host', kind: 'laptop', address: { ip: '10.0.0.1', mac: 'AA:AA:AA:AA:AA:AA' } },
+  { id: 'sw', label: '交换机', role: 'switch', kind: 'switch' },
+  { id: 'b', label: '主机 B', role: 'host', kind: 'laptop', address: { ip: '10.0.0.2', mac: 'BB:BB:BB:BB:BB:BB' } },
+];
+const arpDomains: BroadcastDomain[] = [{ id: 'lan-a', label: 'LAN A', members: ['a', 'sw', 'b'] }];
+const arpSlotOf = (id: string): number => {
+  const i = arpDevices.findIndex((d) => d.id === id);
+  if (i < 0) throw new Error(`未知设备 ${id}`);
+  return i;
+};
+const bEvent = (patch: Partial<DemoEvent>): DemoEvent => ({
+  id: 'e-b',
+  kind: 'broadcast',
+  from: 'a',
+  to: { kind: 'broadcast', domain: 'lan-a' },
+  payload: { proto: 'ARP', summary: 'ARP Request who-has 10.0.0.2 tell 10.0.0.1', cat: 'broadcast' },
+  dependsOn: [],
+  ...patch,
+});
+const bStep = (ev: DemoEvent): Step => ({
+  id: 'st-b',
+  title: 'ARP 请求',
+  description: '主机 A 广播 ARP Request',
+  events: [ev],
+  stateDeltas: [{ id: 'd-b1', device: 'a', changes: [{ table: 'arp-cache', op: 'upsert', entry: { ip: '10.0.0.2', state: 'incomplete' } }] }],
+});
+const bCtx = (ev: DemoEvent): FrameContext => ({
+  slotOf: arpSlotOf,
+  initiatorId: 'a',
+  devices: arpDevices,
+  domains: arpDomains,
+  scenario: { id: 's-arp', label: 'ARP', initialState: { a: {}, sw: {}, b: {} } as never, steps: [bStep(ev)] } as unknown as DemoScenario,
+  stepIndex: 0,
+});
+
+// H1 第一跳：A 发出广播，excludeFrom 排除 B（B 由第二跳事件送达）→ 动画目标恰为交换机
+const hop1 = toFrame(bStep(bEvent({ to: { kind: 'broadcast', domain: 'lan-a', excludeFrom: ['b'] } })), bCtx(bEvent({ to: { kind: 'broadcast', domain: 'lan-a', excludeFrom: ['b'] } })));
+eq(hop1[1], 0, 'H1 第一跳动画起点 = 主机 A 槽位');
+eq(hop1[2], 1, 'H1 第一跳动画目标 = 交换机槽位');
+eq(hop1[6], 'request', 'H1 广播帧 → request（有运动粒子）');
+
+// H2 第二跳：交换机泛洪转发。动画起点是交换机，但事件源不被改写、原始报文头留在 payload。
+const fwd = bEvent({
+  from: 'sw',
+  to: { kind: 'broadcast', domain: 'lan-a', excludeFrom: ['a'] },
+  payload: { proto: 'ARP', summary: 'ARP Request who-has 10.0.0.2 tell 10.0.0.1（交换机泛洪转发）', cat: 'broadcast' },
+});
+const fwdSnapshot = JSON.stringify(fwd);
+const hop2 = toFrame(bStep(fwd), bCtx(fwd));
+eq(hop2[1], 1, 'H2 转发步动画起点 = 交换机槽位');
+eq(hop2[2], 2, 'H2 转发步动画目标 = 主机 B 槽位');
+eq(hop2[6], 'request', 'H2 转发仍是广播 → request');
+eq(JSON.stringify(fwd), fwdSnapshot, 'H2 适配层不改写事件对象（源 MAC / Sender 字段原样保留，「转发」≠「重新生成请求」）');
+
+// H3–H6 阴性路径
+assert.throws(() => toFrame(bStep(bEvent({})), bCtx(bEvent({}))), /第一阶段仅支持单接收者/, 'H3 多接收者（未写 excludeFrom）显式报错，不静默丢弃');
+n++;
+assert.throws(() => toFrame(bStep(bEvent({ to: { kind: 'broadcast', domain: 'nope' } })), bCtx(bEvent({ to: { kind: 'broadcast', domain: 'nope' } }))), /不在 topology\.domains/, 'H4 广播域不存在报错');
+n++;
+assert.throws(
+  () => toFrame(bStep(bEvent({ to: { kind: 'broadcast', domain: 'lan-a', excludeFrom: ['b', 'sw'] } })), bCtx(bEvent({ to: { kind: 'broadcast', domain: 'lan-a', excludeFrom: ['b', 'sw'] } }))),
+  /没有接收者/,
+  'H5 排除后无接收者报错',
+);
+n++;
+assert.throws(
+  () => toFrame(bStep(bEvent({ to: { kind: 'multicast', domain: 'lan-a', roleFilter: ['host'] } })), bCtx(bEvent({ to: { kind: 'multicast', domain: 'lan-a', roleFilter: ['host'] } }))),
+  /暂不支持 multicast/,
+  'H6 multicast 目标仍不支持（留给 G3 之后）',
+);
+n++;
+eq(relationOf(bEvent({}), 'a'), 'request', 'H7 relationOf：broadcast 一律 request（不受 payload.cat 影响）');
+
+console.log(`view-model tests passed: ${n} assertions (18 state labels, 12 relation cases, 9 broadcast-hop cases, null-row placeholder, I2/I3/I6/I9 negative paths).`);

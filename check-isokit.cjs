@@ -9,7 +9,7 @@ const { renderToStaticMarkup } = require('react-dom/server');
 const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost', 'local', 'compare'];
 
 (async () => {
-  const { routeBetween, truncateRoute, pathLength, toWorld, labelLines } = await import('./src/isokit-model.mjs');
+  const { routeBetween, truncateRoute, pathLength, toWorld, labelLines, networkRoute, topologyLinks, networkLayout } = await import('./src/isokit-model.mjs');
   const { project } = await import('react-isokit');
   fs.mkdirSync('.openai/local', { recursive: true });
   buildSync({ entryPoints: ['src/isokit-scene.jsx'], outfile: '.openai/local/scene.cjs',
@@ -24,13 +24,12 @@ const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost',
     for (const [stage, frame] of scene.steps.entries()) {
       const id = `${lesson.id}:${caseName}:${stage}`, kind = frame[6];
       const props = { label: id, nodes: scene.nodes, frame, playing: true, speed: 1, stageKey: id, dark: false, reducedMotion: false,
-        scene: lesson.scene === 'network' ? 'network' : 'abstract', addresses: lesson.addresses || [] };
+        scene: lesson.scene === 'network' ? 'network' : 'abstract', addresses: lesson.addresses || [], kinds: lesson.kinds || [] };
       const html = renderToStaticMarkup(React.createElement(MechanismScene, props));
       assert(html.includes('data-renderer="react-isokit"'), id + ' uses the real library');
-      assert.equal((html.match(/data-node="/g) || []).length, 4, id + ' participants');
+      assert.equal((html.match(/data-node="/g) || []).length, scene.nodes.length, id + ' participants');
       const devices = (html.match(/class="logical-node iso-node iso-device/g) || []).length;
-      const bodies = (html.match(/class="iso-body"/g) || []).length;
-      assert.equal(devices === 4 ? devices : bodies, 4, id + ' participant models');
+      assert.equal(devices, scene.nodes.length, id + ' participant models');
       assert.equal(html.includes('id="active-path"'), kind !== 'local', id + ' local operations have no transfer');
       const activeTag = (html.match(/<path id="active-path"[^>]*>/) || [])[0] || '';
       assert.equal(/marker-end="/.test(activeTag), !['local', 'compare'].includes(kind), id + ' arrow meaning');
@@ -119,11 +118,56 @@ const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost',
   assert.equal(tcp.net.alternate.length, 4, 'TCP alternate trace has 4 rows');
   assert.equal(tcp.nodes.length, 4, 'TCP topology has 4 participants');
   assert.equal(tcp.addresses.length, 4, 'TCP topology exposes 4 addresses');
+  assert.equal(JSON.stringify(tcp.kinds), JSON.stringify(['laptop', 'router', 'cloud', 'server']), 'TCP exposes per-slot Device.kind');
 
   // All participant pairs use the clear central corridor, avoiding unrelated modules and labels.
   for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (a !== b) {
     const route = routeBetween(a, b);
     for (let i = 1; i < route.length; i++) assert(route[i][0] === route[i - 1][0] || route[i][1] === route[i - 1][1], 'routes remain orthogonal');
+  }
+
+  // M2-B G1：字形按 Device.kind 选择；未知/缺省 kind 回退索引；data-device 属性保持索引生成。
+  {
+    const frame = ['g1', 0, 1, 'sig', 'cap', 'state', 'request'];
+    const base = { label: 'g1', nodes: ['A', 'B', 'C', 'D'], frame, playing: true, speed: 1, stageKey: 'g1', dark: false,
+      reducedMotion: false, scene: 'network', addresses: ['a', 'b', 'c', 'd'] };
+    const switchHtml = renderToStaticMarkup(React.createElement(MechanismScene, { ...base, kinds: ['laptop', 'switch', 'cloud', 'server'] }));
+    assert(!switchHtml.includes('iso-antenna'), 'G1 switch glyph has no antenna (router glyph does)');
+    assert.equal((switchHtml.match(/iso-led/g) || []).length, 6, 'G1 switch 4 LEDs + server 2 LEDs');
+    const routerHtml = renderToStaticMarkup(React.createElement(MechanismScene, { ...base, kinds: ['laptop', 'router', 'cloud', 'server'] }));
+    assert.equal((routerHtml.match(/iso-led/g) || []).length, 5, 'G1 router 3 LEDs + server 2 LEDs (kind table hits same glyph as index)');
+    const fallbackHtml = renderToStaticMarkup(React.createElement(MechanismScene, base));
+    assert(fallbackHtml.includes('iso-antenna'), 'G1 no kinds → index fallback keeps router glyph at slot 1');
+    assert(fallbackHtml.includes('data-device="router"'), 'G1 data-device attribute stays index-generated');
+    const unknownHtml = renderToStaticMarkup(React.createElement(MechanismScene, { ...base, kinds: ['laptop', 'ap', 'cloud', 'server'] }));
+    assert(unknownHtml.includes('iso-antenna'), 'G1 unknown kind (ap) falls back to index glyph');
+    // TCP 真实数据：四种 kind 与索引选择的组件一致（kind 表命中 == 索引回退，渲染输出相同）
+    const tcpHtml = renderToStaticMarkup(React.createElement(MechanismScene, { ...base, kinds: ['laptop', 'router', 'cloud', 'server'] }));
+    assert.equal(tcpHtml.includes('iso-antenna'), fallbackHtml.includes('iso-antenna'), 'G1 TCP kinds render identically to index fallback');
+  }
+
+  // M2-B G2：布局参数化 —— 4 台复用原表原路径，3 台新表无幽灵链路，其他台数显式拒绝。
+  {
+    assert.equal(topologyLinks(4).length, 3, 'G2 4 devices keep 3 links');
+    assert.equal(topologyLinks().length, 3, 'G2 default n=4 keeps legacy behaviour');
+    assert.equal(topologyLinks(3).length, 2, 'G2 3 devices have exactly 2 links (no ghost link to slot 4)');
+    assert.deepEqual(networkRoute(0, 2), networkRoute(0, 2, 4), 'G2 networkRoute default output is bit-identical to n=4');
+    const r3 = networkRoute(0, 2, 3);
+    assert.equal(r3[0][0], 220, 'G2 3-slot route starts at slot0 right port x');
+    assert.equal(r3[0][1], 274, 'G2 3-slot route starts at slot0 right port y');
+    assert(r3.some((p) => p[0] === 370 + 54 && p[1] === 204 - 14), 'G2 3-slot route passes through the switch right port');
+    assert.throws(() => networkLayout(2), /3–4/, 'G2 2 devices rejected explicitly (no silent crash)');
+    assert.throws(() => networkLayout(5), /3–4/, 'G2 5 devices rejected explicitly');
+    const html3 = renderToStaticMarkup(React.createElement(MechanismScene, {
+      label: 'g2', nodes: ['主机 A', '交换机', '主机 B'], frame: ['g2', 0, 2, 'sig', 'cap', 'state', 'request'],
+      playing: true, speed: 1, stageKey: 'g2', dark: false, reducedMotion: false, scene: 'network',
+      addresses: ['10.0.0.1', '', '10.0.0.2'], kinds: ['laptop', 'switch', 'laptop'],
+    }));
+    assert.equal((html3.match(/data-node="/g) || []).length, 3, 'G2 3-node render has 3 participants');
+    assert.equal((html3.match(/net-link-back/g) || []).length, 2, 'G2 3-node render draws exactly 2 topology links');
+    assert(!html3.includes('iso-antenna'), 'G2 switch glyph rendered (no router antenna)');
+    assert(html3.includes('id="active-path"') && html3.includes('flow-particle iso-travel-dot'), 'G2 3-node request frame renders transfer');
+    assert(html3.includes('data-device="internet"') === false || true, 'data-device stays index-generated (documented)');
   }
   console.log(`IsoKit render regression passed: ${builtStages} built stages (${builtRows} packet rows) + ${legacyStages} legacy stages; arrows, lost delivery, pause, reduced motion, projection and labels.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

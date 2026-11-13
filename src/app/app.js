@@ -23,6 +23,10 @@ function scenario(){return alt&&current.alternate?current.alternate:special&&cur
 function frames(){return scenario().steps}
 function nodes(){return scenario().nodes}
 const RELATIONS={request:'请求传递',data:'数据传递',control:'控制关系',check:'条件校验',reject:'请求被拒绝',lost:'传递中断 · 未到达',local:'内部操作',compare:'方案对照'};
+// 机制详解是可选内容：没有条目的课程仍要能进导航、能被选中、能看步骤详解。
+// 缺省只影响「机制/扩展阅读」区块，不影响课程本身与步骤时间线（data.js 时代的单课数据不受影响）。
+const EMPTY_DETAILS={sections:[],readings:[],sources:[],foundation:''};
+const detailsOf=id=>MECHANISM_DETAILS[id]||EMPTY_DETAILS;
 const CATS={hand:'握手和 ACK',cdata:'来自笔记本电脑的数据',sdata:'来自服务器的数据',fin:'关闭（FIN）',lost:'传递丢失'};
 function relationText(s){const ns=nodes();if(s[6]==='local')return ns[s[1]]+' · 内部操作';if(s[6]==='compare')return ns[s[1]]+' ｜ '+ns[s[2]]+' · 对照';if(s[6]==='lost')return ns[s[1]]+' ⇢ × · 未到达 '+ns[s[2]];return ns[s[1]]+(s[6]==='request'||s[6]==='data'?' → ':' ⇢ ')+ns[s[2]]}
 function currentFrame(){return frames()[step]}
@@ -46,10 +50,10 @@ function finish(){if(!completed.has(current.id)){completed.add(current.id);saveP
 function goStep(n){stop();started=true;step=Math.max(0,Math.min(frames().length-1,n));cueMotion();renderStep();if(step===frames().length-1)finish()}
 function closeMenu(){$('#sidebar').classList.remove('open');$('#shade').hidden=true;$('#menu').setAttribute('aria-expanded','false')}
 function select(id,updateHash=true){if(!byId[id])return;stop();current=byId[id];step=0;alt=false;special=false;started=false;cueMotion();detail='concept';view='mechanism';if(filter!=='all'&&Number(filter)!==current.group)filter='all';query='';if($('#search'))$('#search').value='';if(updateHash&&location.hash!==`#${id}`)history.pushState(null,'',`#${id}`);closeMenu();render();}
-function renderNav(){const eligible=LESSONS.filter(l=>(filter==='all'||l.group===Number(filter))&&`${l.title} ${l.en} ${l.summary} ${l.principle} ${l.pitfall} ${l.steps.flat().join(' ')} ${MECHANISM_DETAILS[l.id].sections.map(s=>s.title+' '+s.body).join(' ')} ${MECHANISM_DETAILS[l.id].foundation}`.toLowerCase().includes(query.toLowerCase()));let html='';GROUPS.forEach((g,i)=>{const list=eligible.filter(l=>l.group===i);if(!list.length)return;html+=`<div class="topic-group"><b>0${i+1} / ${g.name}</b><span>${list.length}</span></div>`;for(const l of list){const active=l.id===current.id;html+=`<button class="topic ${active?'active':''} ${completed.has(l.id)?'done':''}" data-lesson="${l.id}" ${active?'aria-current="true"':''} aria-label="${l.title}"><span class="topic-dot"></span><span><strong>${l.title}</strong><small>${l.en}</small></span><span class="chev">${icon(active?'chevron-down':'chevron-right')}</span></button>`;if(active&&!query)html+=`<div class="topic-steps">${frames().map((s,j)=>`<button class="topic-step ${step===j?'active':''}" data-step="${j}" aria-label="步骤 ${j+1}：${s[0]}"><span>${j+1}</span>${s[0]}</button>`).join('')}</div>`;}});$('#topic-list').innerHTML=html||'<div class="empty">没有找到匹配的主题。<br>试试「版本」「重试」或「日志」。</div>';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}
+function renderNav(){const eligible=LESSONS.filter(l=>(filter==='all'||l.group===Number(filter))&&`${l.title} ${l.en} ${l.summary} ${l.principle} ${l.pitfall} ${l.steps.flat().join(' ')} ${detailsOf(l.id).sections.map(s=>s.title+' '+s.body).join(' ')} ${detailsOf(l.id).foundation}`.toLowerCase().includes(query.toLowerCase()));let html='';GROUPS.forEach((g,i)=>{const list=eligible.filter(l=>l.group===i);if(!list.length)return;html+=`<div class="topic-group"><b>0${i+1} / ${g.name}</b><span>${list.length}</span></div>`;for(const l of list){const active=l.id===current.id;html+=`<button class="topic ${active?'active':''} ${completed.has(l.id)?'done':''}" data-lesson="${l.id}" ${active?'aria-current="true"':''} aria-label="${l.title}"><span class="topic-dot"></span><span><strong>${l.title}</strong><small>${l.en}</small></span><span class="chev">${icon(active?'chevron-down':'chevron-right')}</span></button>`;if(active&&!query)html+=`<div class="topic-steps">${frames().map((s,j)=>`<button class="topic-step ${step===j?'active':''}" data-step="${j}" aria-label="步骤 ${j+1}：${s[0]}"><span>${j+1}</span>${s[0]}</button>`).join('')}</div>`;}});$('#topic-list').innerHTML=html||'<div class="empty">没有找到匹配的主题。<br>试试「版本」「重试」或「日志」。</div>';$$('[data-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.filter===filter))}
 function relationButtons(){return current.related.filter(id=>byId[id]).map(id=>`<button data-related="${id}">${byId[id].title} ${icon('arrow-up-right')}</button>`).join('')}
 function renderDetail(){
- const s=currentFrame(),notes=MECHANISM_DETAILS[current.id],key=current.id+':'+detail+':'+(alt?'a':special?'s':'m')+step;
+ const s=currentFrame(),notes=detailsOf(current.id),key=current.id+':'+detail+':'+(alt?'a':special?'s':'m')+step;
  $$('[data-detail]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.detail===detail)));
  // Keep the reading position and focused links intact while the animation advances.
  if(renderedDetail===key)return;
@@ -59,7 +63,8 @@ function renderDetail(){
   const stepBlock=`<div class="detail-section step-detail"><h4>步骤 ${String(step+1).padStart(2,'0')} · ${esc(s[0])}</h4><p class="step-signal-line"><code>${esc(s[3])}</code></p>${deep?`<p>${esc(deep)}</p>`:`<p>${esc(s[4])}</p>`}<p class="state-line">状态观察：${esc(s[5])}</p></div>`;
   const sections=notes.sections.map(section=>`<div class="detail-section"><h4>${esc(section.title)}</h4><p>${esc(section.body)}</p></div>`).join('');
   const readings=notes.readings.map(id=>{const src=sourceById['csapp_'+id];return `<p class="source-note"><a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">${esc(src.name)} ${icon('arrow-up-right')}</a></p>`}).join('');
-  html=`<h3>${esc(current.en)}</h3>${stepBlock}<p>${esc(current.summary)}</p><div class="principle">${esc(current.principle)}</div>${sections}<div class="detail-section"><h4>关键取舍</h4><p>${esc(current.tradeoff)}</p></div><div class="detail-section"><h4>容易误解</h4><p class="warning">${esc(current.pitfall)}</p></div><div class="detail-section"><h4>CSAPP 关联与阅读</h4><p>${esc(notes.foundation)}</p>${readings}</div>${relationButtons()?`<div class="detail-section"><h4>关联技术</h4><div class="related">${relationButtons()}</div></div>`:''}`;
+  const csapp=notes.foundation||readings?`<div class="detail-section"><h4>CSAPP 关联与阅读</h4><p>${esc(notes.foundation)}</p>${readings}</div>`:'';
+  html=`<h3>${esc(current.en)}</h3>${stepBlock}<p>${esc(current.summary)}</p><div class="principle">${esc(current.principle)}</div>${sections}<div class="detail-section"><h4>关键取舍</h4><p>${esc(current.tradeoff)}</p></div><div class="detail-section"><h4>容易误解</h4><p class="warning">${esc(current.pitfall)}</p></div>${csapp}${relationButtons()?`<div class="detail-section"><h4>关联技术</h4><div class="related">${relationButtons()}</div></div>`:''}`;
  }else{
   const sources=[...new Set([...current.sources,...(notes.sources||[]),...notes.readings.map(id=>'csapp_'+id)])];
   html=`<h3>从哪里继续阅读</h3><p class="source-note">文字与教学步骤为综合整理，不是资料原文的逐句引用。CSAPP 条目解释系统基础；数据库与分布式协议的具体保证以对应专业资料为准。</p>${sources.map(id=>{const src=sourceById[id];return `<a class="source-card" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer"><small class="source-kind">${esc(src.kind)}</small><strong>${esc(src.name)} ${icon('arrow-up-right')}</strong><span>${esc(src.note)}</span></a>`}).join('')}<div class="detail-section"><h4>整理范围</h4><p>${esc(GROUPS[current.group].question)}</p><button class="outline-button" data-about>查看完整来源说明 ${icon('arrow-up-right')}</button></div>`;
@@ -79,6 +84,7 @@ function draw(){
   preview:!started,
   packetCat:rows?rows[step]&&rows[step].cat:undefined,
   addresses:current.addresses||[],
+  kinds:current.kinds||[],
   reducedMotion:motionPreference.matches
  });
  $('#relation-kind').className='relation-chip kind-'+kind;$('#relation-kind').textContent=RELATIONS[kind];$('#diagram-state').textContent=s[5];

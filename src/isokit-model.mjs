@@ -14,8 +14,21 @@ const NETWORK_PORTS = [
   { left: [-50, -10] },
 ];
 
-function facing(node, other) {
-  return NETWORK_POSITIONS[other][0] >= NETWORK_POSITIONS[node][0] ? 'right' : 'left';
+// M2-B G2：三设备布局（主机 A / 交换机 / 主机 B）。四设备复用原两张表（同一对象、同一行为）。
+export const NETWORK_POSITIONS_3 = [[150, 300], [370, 204], [590, 300]];
+const NETWORK_PORTS_3 = [
+  { right: [70, -26] },
+  { left: [-54, -14], right: [54, -14] },
+  { left: [-70, -10] },
+];
+export function networkLayout(n = 4) {
+  if (n === 4) return { positions: NETWORK_POSITIONS, ports: NETWORK_PORTS };
+  if (n === 3) return { positions: NETWORK_POSITIONS_3, ports: NETWORK_PORTS_3 };
+  throw new Error(`network 场景仅支持 3–4 台设备（收到 ${n} 台）`);
+}
+
+function facing(node, other, positions = NETWORK_POSITIONS) {
+  return positions[other][0] >= positions[node][0] ? 'right' : 'left';
 }
 
 function smooth(points, samples = 14) {
@@ -38,28 +51,30 @@ function smooth(points, samples = 14) {
 
 // Route through every device between the two endpoints, so a packet visibly hops
 // client → router → internet → server instead of flying over them.
-export function networkRoute(from, to) {
+export function networkRoute(from, to, n = 4) {
   if (from === to) return null;
+  const { positions, ports } = networkLayout(n);
   const step = from < to ? 1 : -1, chain = [];
   for (let i = from; ; i += step) { chain.push(i); if (i === to) break; }
   const waypoints = [];
   chain.forEach((node, i) => {
     const prev = chain[i - 1], next = chain[i + 1];
-    if (prev !== undefined) waypoints.push(offsetPort(node, facing(node, prev)));
-    if (next !== undefined) waypoints.push(offsetPort(node, facing(node, next)));
+    if (prev !== undefined) waypoints.push(offsetPort(node, facing(node, prev, positions), positions, ports));
+    if (next !== undefined) waypoints.push(offsetPort(node, facing(node, next, positions), positions, ports));
   });
   return smooth(waypoints);
 }
 
-function offsetPort(node, side) {
-  const [x, y] = NETWORK_POSITIONS[node], [dx, dy] = NETWORK_PORTS[node][side];
+function offsetPort(node, side, positions, ports) {
+  const [x, y] = positions[node], [dx, dy] = ports[node][side];
   return [x + dx, y + dy];
 }
 
-export function topologyLinks() {
+export function topologyLinks(n = 4) {
+  const { positions, ports } = networkLayout(n);
   const links = [];
-  for (let i = 0; i < NETWORK_POSITIONS.length - 1; i++) {
-    links.push(smooth([offsetPort(i, facing(i, i + 1)), offsetPort(i + 1, facing(i + 1, i))], 18));
+  for (let i = 0; i < positions.length - 1; i++) {
+    links.push(smooth([offsetPort(i, facing(i, i + 1, positions), positions, ports), offsetPort(i + 1, facing(i + 1, i, positions), positions, ports)], 18));
   }
   return links;
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Glow, Plate, path } from 'react-isokit';
 import {
   POSITIONS, VIEW_BOX, routeBetween, truncateRoute, toWorld, labelLines, illustrationFor,
-  NETWORK_POSITIONS, NETWORK_VIEW_BOX, networkRoute, topologyLinks, screenPath,
+  NETWORK_VIEW_BOX, networkLayout, networkRoute, topologyLinks, screenPath,
 } from './isokit-model.mjs';
 import { TravelDot } from './travel-dot.jsx';
 
@@ -113,8 +113,29 @@ function Server() {
   </>;
 }
 
+// 交换机：复用 Router 的底座几何，去掉天线；正面为 4 个端口 LED + 两组端口示意线。
+function Switch() {
+  return <>
+    <Box className="iso-base" x={-50} y={-22} z={-10} w={100} d={44} h={5} r={6} />
+    <Box className="iso-body" x={-46} y={-18} z={-4} w={92} d={38} h={14} r={6}
+      top={<path className="ik-detail" d="M14 12h64" />}
+      front={<>
+        <circle className="iso-led" cx="8" cy="9" r="1.9" />
+        <circle className="iso-led" cx="18" cy="9" r="1.9" />
+        <circle className="iso-led" cx="28" cy="9" r="1.9" />
+        <circle className="iso-led" cx="38" cy="9" r="1.9" />
+        <path className="ik-detail" d="M-30 2h60M-30 6h60" />
+      </>} />
+  </>;
+}
+
+// M2-B G1：字形按 Device.kind 选择；旧数据没有 kinds 时按槽位索引回退，原渲染行为不变。
 const DEVICES = [Laptop, Router, Cloud, Server];
+const DEVICE_BY_KIND = { laptop: Laptop, router: Router, cloud: Cloud, server: Server, switch: Switch };
+// 标签 y 偏移与阴影尺寸同理按 kind 取值（TCP 四种 kind 与原索引分支逐值相同），未知 kind 回退索引表。
 const NET_NAME_Y = [64, 52, 72, 86];
+const NET_NAME_Y_BY_KIND = { laptop: 64, router: 52, cloud: 72, server: 86, switch: 52 };
+const SHADOW_BY_KIND = { laptop: [72, 20, 34], router: [72, 20, 34], cloud: [84, 26, 34], server: [72, 20, 46], switch: [72, 20, 34] }; // [rx, ry, cy]
 
 // 把整条折线沿起止点连线的垂直方向平移 dist，得到与之平行的偏移线。
 function offsetPolyline(points, dist) {
@@ -124,15 +145,18 @@ function offsetPolyline(points, dist) {
   return points.map(([x, y]) => [x + ox, y + oy]);
 }
 
-function NetworkModule({ name, address, index, active, local }) {
-  const [x, y] = NETWORK_POSITIONS[index];
-  const Device = DEVICES[index] || Cloud;
+// M2-B G2：槽位坐标由 networkLayout(n) 提供（4 台 = 原表原引用；3 台 = 并行新表），组件本身不读全局位置。
+function NetworkModule({ name, address, index, active, local, kind, x, y }) {
+  const Device = (kind && DEVICE_BY_KIND[kind]) || DEVICES[index] || Cloud;
+  const [shadowRx, shadowRy, shadowCy] = (kind && SHADOW_BY_KIND[kind])
+    || [index === 2 ? 84 : 72, index === 2 ? 26 : 20, index === 3 ? 46 : 34];
+  const nameY = (kind && NET_NAME_Y_BY_KIND[kind]) ?? NET_NAME_Y[index];
   return <g className={`logical-node iso-node iso-device ${active ? 'node-current' : ''}`} data-node={index}
     data-device={['client', 'router', 'internet', 'server'][index]} transform={`translate(${x} ${y})`}>
     <title>{`${name}${address ? ' · ' + address : ''} · 逻辑设备示意`}</title>
     <rect className="iso-label-bounds" x="-120" y="-96" width="240" height="220" fill="none" stroke="none" />
     <g className="iso-object">
-      <ellipse className="iso-shadow" cx="0" cy={index === 3 ? 46 : 34} rx={index === 2 ? 84 : 72} ry={index === 2 ? 26 : 20} />
+      <ellipse className="iso-shadow" cx="0" cy={shadowCy} rx={shadowRx} ry={shadowRy} />
       <Device />
     </g>
     <text className="iso-node-number" x="-104" y="-72">{String(index + 1).padStart(2, '0')}</text>
@@ -140,19 +164,20 @@ function NetworkModule({ name, address, index, active, local }) {
       <circle r="10" /><circle r="3" />
     </g>}
     <text className="logical-label iso-node-label net-label" textAnchor="middle">
-      <tspan className="net-name" x="0" y={NET_NAME_Y[index]}>{name}</tspan>
-      {address && <tspan className="net-addr" x="0" y={NET_NAME_Y[index] + 17}>{address}</tspan>}
+      <tspan className="net-name" x="0" y={nameY}>{name}</tspan>
+      {address && <tspan className="net-addr" x="0" y={nameY + 17}>{address}</tspan>}
     </text>
   </g>;
 }
 
-export function MechanismScene({ label, nodes, frame, playing, motionMode = playing ? 'playing' : 'paused', motionVersion = 0, speed, stageKey, reducedMotion, dark, scene = 'abstract', addresses = [], preview = false, packetCat }) {
+export function MechanismScene({ label, nodes, frame, playing, motionMode = playing ? 'playing' : 'paused', motionVersion = 0, speed, stageKey, reducedMotion, dark, scene = 'abstract', addresses = [], kinds = [], preview = false, packetCat }) {
   const [, from, to, , , , kind] = frame;
   const network = scene === 'network';
   const lost = kind === 'lost', rejected = kind === 'reject' || lost;
   const transfer = kind === 'request' || kind === 'data';
   const idle = preview && !playing;
-  const fullRoute = network ? networkRoute(from, to) : routeBetween(from, to);
+  const netPositions = network ? networkLayout(nodes.length).positions : null;
+  const fullRoute = network ? networkRoute(from, to, nodes.length) : routeBetween(from, to);
   const route = idle ? null : fullRoute && (lost ? truncateRoute(fullRoute) : fullRoute);
   const routeWorld = network ? null : route?.map(toWorld);
   const d = route ? (network ? screenPath(route) : path(routeWorld)) : '';
@@ -173,7 +198,7 @@ export function MechanismScene({ label, nodes, frame, playing, motionMode = play
       </marker>
     </defs>
     {network && <g className="iso-topology" aria-hidden="true">
-      {topologyLinks().map((points, i) => <g key={i}>
+      {topologyLinks(nodes.length).map((points, i) => <g key={i}>
         <path className="net-link" d={screenPath(offsetPolyline(points, 2.4))}
           markerEnd="url(#net-arrow)" />
         <path className="net-link net-link-back" d={screenPath(offsetPolyline([...points].reverse(), 2.4))}
@@ -187,7 +212,8 @@ export function MechanismScene({ label, nodes, frame, playing, motionMode = play
         d={d} markerEnd={marker} />
     </g>}
     {nodes.map((name, index) => network
-      ? <NetworkModule key={index} name={name} address={addresses[index]} index={index}
+      ? <NetworkModule key={index} name={name} address={addresses[index]} index={index} kind={kinds[index]}
+          x={netPositions[index][0]} y={netPositions[index][1]}
           active={!idle && (index === from || (!lost && index === to))} local={!idle && kind === 'local'} />
       : <LogicalModule key={index} name={name} index={index}
           active={!idle && (index === from || (!lost && index === to))} local={!idle && kind === 'local'} />)}
