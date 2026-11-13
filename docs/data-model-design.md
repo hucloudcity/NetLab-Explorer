@@ -64,6 +64,7 @@ interface Source {
   sourceId: string;              // 如 'rfc-9293'、'kr-9e-textbook'、'ieee-802-1Q'
   type: 'textbook' | 'rfc' | 'ieee' | 'vendor' | 'lab' | 'tool';
   name: string;                  // 如 'Transmission Control Protocol'
+  description?: string;          // 来源卡片说明行（M2-A 冻结例外）；缺省不渲染，勿与 licenseNote 混用
   author: string;                // 如 'W. Eddy (Ed.)' 或 'Kurose & Ross'
   version?: string;              // 如 'RFC 9293' / '9th Edition' / 'IEEE 802.1Q-2022'
   url: string;                   // 官方地址（禁止第三方镜像，见 ADR-003）

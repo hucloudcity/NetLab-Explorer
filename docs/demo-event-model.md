@@ -19,6 +19,7 @@ interface Topology {
 interface Device {
   id: string;                    // 'laptop'、'gateway'、'dns-root'…全 demo 内唯一
   label: string;                 // 展示名，如 '笔记本电脑'
+  stateLabel?: string;           // 状态文案短名（M2-A 冻结例外）；缺省回退 label
   role: 'host' | 'switch' | 'router' | 'server' | 'resolver' | 'gateway' | 'ap';
   kind: 'laptop' | 'router' | 'cloud' | 'server' | 'switch' | 'ap' | 'generic';
   address?: {                    // 展示地址（静态数据，不参与计算）
@@ -49,9 +50,11 @@ interface Step {
   id: string;                    // 步骤 id，如 'arp-request'
   title: string;                 // 步骤标题（对应现 data.js steps[0]）
   description: string;           // 逐步详解（对应 stepNotes，迁入）
+  signal?: string;               // 信号行（M2-A 冻结例外）；缺省回退 events[0].payload.summary
+  caption?: string;              // 场景字幕（M2-A 冻结例外）；缺省回退 description
   events: DemoEvent[];           // 本步骤全部事件（≥1）
   stateDeltas: StateDelta[];     // 本步骤状态变化（可空）
-  traceRow?: TraceRow;           // 数据包流表格行（对应现 net.main）
+  traceRow?: TraceRow | null;    // 数据包流表格行；null = 本步确定无报文（占位行）
 }
 
 interface DemoEvent {
@@ -194,6 +197,18 @@ type StateChange =
 
 **不做**：状态推导/校验协议正确性（引擎不知道 `SYN_SENT → ESTABLISHED` 是否合法，那是校验器可选的规则检查，见 validation-rules.md §5）。
 
+### 4.3 状态观察文案：由 fold 派生，不手写（M2-A）
+
+播放器的「状态观察」一行不是数据字段，而是**对折叠结果的拼句**（构建期由 `src/engine/view-model.ts` 生成）：
+
+1. **观察点 = 本步 `stateDeltas` 覆盖的设备**。delta 除了「改状态」，还承担「声明本步观察谁」的职责；状态没变的设备可写一条**同值 `set`** 作为观察点（TCP 第 1 步的 `server: LISTEN` 即此用法）。
+2. **文案永远取自折叠后的快照**（`fold(initialState, deltas[0..i])`），不取 delta 里的 `to`。写错状态会立刻暴露，而不是被文案掩盖。
+3. 多个观察点同状态 → `双向 <状态>`；不同状态 → `<设备短名> <状态>` 以 ` · ` 连接（短名取 `Device.stateLabel`，缺省 `label`）。
+4. `event.note` **只写事件观察**（丢包、重传、缺口、半关闭），**不得复述状态枚举名**；有状态且 note 存在时拼成 `<clause> · <note>`，无状态可读时 note 即整行（如主流程第 4–10 步）。
+5. 不做格式化魔法：状态名一律原样（`SYN_RCVD`，不转「半开」）。
+
+> 18 条文案（14 主 + 4 备）的逐条对照见 `docs/m2a-migration-record.md`；唯一有意变长的是主流程第 12 步（补上客户端 `FIN_WAIT_2`，见 D-B）。
+
 ## 五、TraceRow（数据包流表格行）
 
 ```ts
@@ -211,6 +226,8 @@ interface TraceRow {
 ```
 
 现 `net.main` 七列数据整体映射为 `scenarios[].steps[].traceRow`，字段一一对应，无语义损失。
+
+**与步骤的绑定（M2-A 修复）**：`traceRow` 属步骤，不按数组下标与步骤对齐。适配层按 `traceRow.eventRef` 找到**本步**事件（缺省时仅在「本步唯一事件」的情况下补全），并复核 `cat` 与事件 `payload.cat` 一致、`lost` 与 `event.kind === 'drop'` 一致。**表格数组恒与步骤等长**：本步确定无报文时写 `traceRow: null`（或省略），视图里占位为 `null`，UI 渲染一行「本步为本机操作，无网络报文」，不得留空行、不得错位。
 
 ## 六、Scenario（场景）
 

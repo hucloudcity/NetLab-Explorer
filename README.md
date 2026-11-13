@@ -15,6 +15,7 @@
 | 三 · 待启动 | `docs/content-data-model.md`、`src/types/*.ts` | 知识/来源/分类类型与 Zod 校验 |
 | M0 · 已完成 | `docs/migration-plan.md` | 源文件归位方案与里程碑状态 |
 | M0.1 · 已完成 | `docs/deployment-path-verification.md` | 部署路径验证：相对路径修复、三前缀实测、路径自检护栏 |
+| M2-A · 已完成 | `docs/m2a-migration-record.md` | TCP 课程迁移实录：字段映射、状态文案派生、回归结果与第 12 步基线 |
 
 > 代码基线：`main` 分支首个提交 `52fba15`（2026-11-12），作为后续改造的回滚点。
 
@@ -41,21 +42,30 @@ npm start        # 服务项目根目录（端口 8091，避免与完整版 8090
 
 > **部署约定（勿改回根绝对路径）：** 页面内所有本地资源必须用相对路径（`./` 或 `../../`）。GitHub Pages 项目站点部署在 `https://<user>.github.io/<repo>/` 下，任何 `/content/x.js` 这类以 `/` 开头的引用都会指向域名根而 404。详见 `docs/deployment-path-verification.md`。
 
+## 数据源（M2-A 起）
+
+- **正式数据源是 `content/` 下的 JSON**：`content/demos/*.json`（演示：拓扑、场景、事件、状态、报文行）、`content/knowledge/*.json`（知识点）、`content/sources.json`（来源台账）、`content/catalog.json`(课程目录)。
+- 构建期适配层 `src/engine/view-model.ts` 把 JSON 装配成页面视图，由 `scripts/build-data.mts` 写出 **`dist/netlab-data.js`**——它是**构建产物，不入库**（已在 `.gitignore`），`npm run build` / `npm start` / `npm run check` 都会先自动生成；缺它时页面会显示「缺少 dist/netlab-data.js」的可见报错而不是白屏。
+- **`content/data.js` 暂时保留**：页面已不再加载它，它只作为旧 GitHub 模板的兼容数据与 `check-isokit.cjs` 渲染回归的旧链路夹具（见下）。
+
 ## 校验
 
 ```bash
-npm run check    # 六段：内容契约 + IsoKit 渲染回归 + 动效回归 + 部署路径自检 + tsc --noEmit（数据模型类型）+ 内容校验与数据模型测试（L1 Zod / L2 跨引用 / L3 发布门禁 P1–P7 / 65 项独立测试）
+npm run check    # 六段：构建数据 + 内容契约 + IsoKit 渲染回归（双链路：旧 data.js 夹具 18 段 + 新 netlab-data.js 18 段，含消费契约与 18 行报文断言）+ 动效回归 + 部署路径自检 + tsc --noEmit（数据模型类型）+ 内容校验与测试（L1 Zod / L2 跨引用 / L3 发布门禁 P1–P7 / 65 项数据模型测试 / 70 项适配层测试）
 node .openai/smoke-runtime.cjs   # jsdom 运行时冒烟（需先启动 npm start）
 node .openai/shot-tcp.cjs        # 截图（puppeteer-core + 本机 Chrome）
+node .openai/check-step12.cjs    # 主流程第 12 步视觉基线回归（--update 重录；需先 npm start）
 ```
 
 ## 结构说明（M0 源文件归位后）
 
-- `content/data.js`：演示数据，只保留 TCP 一课；GROUPS 只有一个「网络协议」分组；SOURCES 只保留 RFC 9293 与 CSAPP。
-- `content/mechanisms.js`：机制详解只保留 TCP 条目及引用的 CSAPP 阅读条目。
+- `content/demos/`、`content/knowledge/`、`content/sources.json`、`content/catalog.json`：**正式数据源**（JSON，见「数据源」一节）。
+- `content/data.js`：旧版单文件数据（只保留 TCP 一课），M2-A 起页面不再加载；保留作旧模板兼容数据与 `check-isokit.cjs` 旧链路夹具。
+- `content/mechanisms.js`：机制详解只保留 TCP 条目及引用的 CSAPP 阅读条目（M2-B 起计划迁入 knowledge JSON；新增课程必须在此补条目，否则导航会报错）。
 - `src/app/index.html`：页面入口；移除三部分导航、搜索、筛选、知识图谱页签；标题与页脚为单主题文案。
 - `src/app/app.js`：UI 逻辑（进度、标题、详解对单主题适配；关联主题为空时隐藏对应区块）。
-- `dist/`：只含构建产物 `isokit.js`（由 `npm run build` 生成）与 `licenses/`。
+- `src/engine/view-model.ts` + `scripts/build-data.mts`：构建期适配层，JSON → `dist/netlab-data.js`（构建产物，不入库）。
+- `dist/`：构建产物 `isokit.js`、`netlab-data.js`（均由 `npm run build` 生成）与 `licenses/`。
 - 仓库根 `index.html`：仅作站点根跳转页（`meta refresh` → `./src/app/`），CI 一并装配进 `_site/`。
-- 资源引用全部相对路径（`../../content/*`、`../../dist/*`），与部署前缀无关；`scripts/check-paths.cjs` 禁止根绝对路径并校验每条引用真实存在。
+- 资源引用全部相对路径（`../../dist/*`、`../../content/*`），与部署前缀无关；`scripts/check-paths.cjs` 禁止根绝对路径并校验每条引用真实存在。
 - 端口使用 8091；`_site/` 为 CI 装配产物，已在 `.gitignore` 中排除。

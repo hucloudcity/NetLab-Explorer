@@ -1,7 +1,22 @@
 # NetLab Explorer 迁移方案（旧项目 → 新数据模型）
 
-> 版本：V1.0（2026-11-12）。执行须待第三阶段审查通过后启动；本阶段只设计不实施。
+> 版本：**V1.1**（2026-11-12）。V1.0 为第三阶段设计稿；此后 M0/M0.1/M1/M2-P0 已全部落地。
 > 前置阅读：`docs/architecture-analysis.md`、`docs/data-model-design.md`、`docs/demo-event-model.md`。
+>
+> **V1.1 修订说明**（产品边界收敛后）：本文 §三 的 M2/M3/M4 已由
+> `docs/product-scope-and-roadmap.md`（V1.1）重排为 **M2-A / M2-B / M2-C**，施工细节见
+> `docs/m2a-implementation-plan.md`。对应关系：
+>
+> | 本文里程碑 | 现状 | 去向 |
+> |---|---|---|
+> | M0 源文件归位 | ✅ 6213681 / e1e00e4 / ecf3bcb | 保留 |
+> | M0.1 部署路径 | ✅ 7d6686f | 保留 |
+> | M1 类型 + Zod + 校验器 | ✅ 84fe544 | 保留并冻结 |
+> | M2-P0 审计修复 | ✅ b5171bd | 保留 |
+> | M2 TCP 数据迁移 | 未开始 | → **M2-A**（本文 §三 M2 的字段级方案已细化进新施工图） |
+> | M3 播放控制换代 | **取消独立里程碑** | 并入 M2-A：播放控制一行不改，只换数据来源 |
+> | M4 渲染器任意拓扑 | **推迟** | 降级为 M2-B（ARP 撞墙）或 M2-C（DNS 5 设备）的前置子任务，只在撞墙时做 |
+> | M5 ARP/DNS 上线 | 未开始 | → **M2-B（ARP）/ M2-C（DNS）** |
 
 ---
 
@@ -45,24 +60,24 @@
 - `scripts/validate-content.mjs`：tsc --noEmit + 结构校验 + 跨引用校验（见 validation-rules.md），挂进 `npm run check`。
 - **验收**：三份样例 JSON 全部通过校验；故意破坏一条引用时校验器报错定位准确。
 
-### M2 — TCP 数据迁移到新模型（1~2 天级）
+### M2 — TCP 数据迁移到新模型（1~2 天级）→ **现为 M2-A**（施工图：`docs/m2a-implementation-plan.md`）
 - `content/demos/tcp-handshake.json`：以样例为底，并入现站全部 14 步主流程数据（net.main 14 行 → traceRow、stepNotes → description、fault 四次挥手 → fault 场景）。
 - knowledge/source 台账初始化：`sources.json`（TCP 相关 4 条来源）+ 15 个首批知识点中的 TCP 系列。
 - 旧 `data.js LESSONS.tcp` / `mechanisms.js.tcp` 保持可读（适配层），**页面输出不变**。
 - **验收**：冒烟 + 截图全过；新旧数据字段映射表归档（docs/）。
 
-### M3 — 演示引擎替换 app.js 中的播放控制（1 天级）
+### M3 — 演示引擎替换 app.js 中的播放控制（1 天级）→ **取消独立里程碑**（并入 M2-A：只换数据来源）
 - 新 `src/engine/scheduler.mjs`：波次推导（拓扑分层）、fold 状态机（前进/后退/重置/重播/跳转，见 demo-event-model.md §4.2），纯函数 + jsdom 单测。
 - app.js 的 `renderStep/播放器` 改为消费引擎输出；删除内嵌的步骤推进逻辑。
 - **验收**：单步后退状态正确回滚（fold 重放）；速度调节/自动播放行为不变；截图逐像素对比。
 
-### M4 — 渲染器支持任意拓扑（1~2 天级）
+### M4 — 渲染器支持任意拓扑（1~2 天级）→ **推迟**（M2-B 撞墙或 M2-C 前置时才做）
 - `src/isokit-model.mjs` 的 `NETWORK_POSITIONS` 硬编码 4 节点 → 按 `participants.length` 与 `layout` 自动布局（保留 4 节点默认布局参数，现有 TCP 视觉零变化）。
 - 广播扇出动画（多弧）、多播弧、drop 终止符为新增绘制分支。
 - 校验脚本 `nodes.length===4` 断言放宽为与数据一致。
 - **验收**：TCP 页面视觉回归零差异；ARP/DNS 样例在引擎中可被播放（内部验证，不必上线）。
 
-### M5 — ARP / DNS 演示上线（后续阶段，本方案不含）
+### M5 — ARP / DNS 演示上线（后续阶段，本方案不含）→ **现为 M2-B / M2-C**
 - 依赖 M1–M4 全部完成；内容准确性按 RFC 826/1034/1035 复核（来源台账 checkedAt 流程）。
 
 ## 四、旧代码影响清单（迁移后需要修改什么）
@@ -98,3 +113,14 @@
 6. **tsc/esbuild 的 TS 校验**只覆盖新代码；旧 app.js 无类型，迁移完成前保持 jsdom 冒烟兜底。
 
 以上问题均**不阻塞第三阶段审查**；前四项在 M4 决策，后两项在 M2 验证。
+
+**V1.1 结案（2026-11-12）**
+
+| # | 结论 |
+|---|---|
+| 1 广播扇出的视觉方案 | 仍开放，**M2-B 用 ARP 的真实需求定**（必要时退化为"逐接收者点亮"） |
+| 2 stepNotes 长文本归属 | **已定**：`Step.description` 承载右侧逐步详解（深注），新增可选 `Step.caption` 承载场景字幕（短文）；不引入 `notes[]` 分片（当前 0 处需要按事件分片） |
+| 3 并行事件的表格表达 | 仍开放，M2-A 全部步骤为"一步一事件"，暂不触发 |
+| 4 `e-ignore-c` 的可见性 | 仍开放，M2-B 定 |
+| 5 `net.alternate` 备用时间线 | **已定**：模型用多 scenario 表达（`scenarios[1].id = 'alternate'`），**不新增 `traceRow.alternatives`**；原"故障"命名与端口 443 一并修正 |
+| 6 tsc/esbuild 覆盖范围 | **已缓解**：新增 `src/engine/view-model.ts` 走 `tsc --noEmit`；旧 `app.js` 仍靠 jsdom 冒烟兜底 |

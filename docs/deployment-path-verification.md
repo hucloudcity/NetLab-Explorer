@@ -40,6 +40,8 @@
 
 **页面完全不可用**：样式丢失、数据未加载、示意图空白、表格 0 行。四个资源全部指向 `http://127.0.0.1:8092/dist/...`，即站点前缀被丢掉了。
 
+> 历史注记（M2-A，2026-11-13）：上面 404 列表是**修复前的快照**。M2-A 之后页面已不再加载 `content/data.js`——数据脚本换成 `dist/netlab-data.js`（构建产物），下表第 3 行随之更新。
+
 对照：M0 之前这些引用是 `./data.js`、`./isokit.js`（同目录相对路径），在任何前缀下都能解析——**M0 为跨目录引用改根绝对路径，是把一个原本前缀无关的站点改成了前缀相关**。责任在 M0 实现，不在 CI 配置。
 
 ---
@@ -54,10 +56,12 @@
 |---|---|---|
 | `/dist/isokit.css?v=…` | `../../dist/isokit.css?v=…` | `/<prefix>/dist/isokit.css` |
 | `/dist/isokit.js?v=…` | `../../dist/isokit.js?v=…` | `/<prefix>/dist/isokit.js` |
-| `/content/data.js?v=…` | `../../content/data.js?v=…` | `/<prefix>/content/data.js` |
+| `/content/data.js?v=…` | `../../content/data.js?v=…`（M0 修复）→ **`../../dist/netlab-data.js?v=…`（M2-A 起现为该值）** | `/<prefix>/dist/netlab-data.js` |
 | `/content/mechanisms.js?v=…` | `../../content/mechanisms.js?v=…` | `/<prefix>/content/mechanisms.js` |
 | `./licenses/react-isokit.txt` | `../../dist/licenses/react-isokit.txt` | `/<prefix>/dist/licenses/…` |
 | `./licenses/isokit-notices.md` | `../../dist/licenses/isokit-notices.md` | `/<prefix>/dist/licenses/…` |
+
+> **M2-A 数据脚本变更：** 页面加载的 `netlab-data.js` 是 `npm run build` 从 `content/*.json` 生成的**构建产物（不入库）**。部署（含 CI 装配 `_site/`）前必须先构建，否则 404——CI workflow 已含 `npm run build` 步骤；`content/data.js` 保留但仅为旧版兼容与渲染回归夹具，页面不再引用。
 
 **为什么用相对路径而不是 basePath：**
 - 相对路径的解析基准是**文档 URL**，与站点挂在哪个前缀无关，本地根路径、仓库子路径、自定义域名根路径三种情形同一份文件都成立。
@@ -112,7 +116,7 @@
 | P3 | 若存在 `_site/`（CI 装配后），同一引用在 `_site` 内也能解析 |
 | P4 | 仓库根 `index.html` 的重定向目标存在且为页面 |
 
-当前输出：`Deployment path check passed: 37 local references resolve; no root-absolute paths; root redirect ok.`
+当前输出：`Deployment path check passed: 39 local references resolve; no root-absolute paths; root redirect ok.`（M2-A 后引用数从 37 变为 39：数据脚本换成 `dist/netlab-data.js` 并新增目录 JSON 的引用核对。）
 
 **这条护栏立刻抓到两个手工检查漏掉的问题：**
 1. 关于对话框的 `./licenses/*` 链接在 M0 后失效（文件在 `dist/licenses/`，引用却指向 `src/app/licenses/`）——截图看不到弹窗，人工验收不会发现，只有真点开对话框才暴露。
@@ -151,6 +155,9 @@
 ## 八、复现方式
 
 ```bash
+# 0. 先构建数据与资产（dist/netlab-data.js 是构建产物，不入库）
+npm run build
+
 # 1. 按 CI 方式装配
 rm -rf _site && mkdir -p _site && cp -r src content dist _site/ && cp index.html _site/index.html
 
