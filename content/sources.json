@@ -12,6 +12,18 @@
     "addedAt": "2026-11-12"
   },
   {
+    "sourceId": "rfc-826",
+    "type": "rfc",
+    "name": "IETF · RFC 826 (An Ethernet Address Resolution Protocol)",
+    "description": "ARP 的原始规范：报文格式、请求与应答的处理流程，以及「先查缓存、再广播询问」的设计理由。",
+    "author": "David C. Plummer",
+    "version": "RFC 826",
+    "url": "https://www.rfc-editor.org/rfc/rfc826",
+    "licenseStatus": "public-standard",
+    "licenseNote": "IETF 公开标准，可引用报文格式与处理语义；不复刻原文段落，示例地址为教学取值。",
+    "addedAt": "2026-11-16"
+  },
+  {
     "sourceId": "csapp-3e",
     "type": "textbook",
     "name": "CMU 15-213 · Computer Systems",

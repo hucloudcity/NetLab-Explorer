@@ -1,6 +1,6 @@
 {
   "$schema-note": "样例数据 · ARP 地址解析。验证广播域推导、多设备接收、单一响应者、ARP Cache 状态变化，以及跨网段时解析网关 MAC。",
-  "id": "arp-resolution",
+  "id": "arp-resolution-sample",
   "title": "ARP 地址解析",
   "protocol": "arp",
   "view": { "kind": "network" },

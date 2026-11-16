@@ -1,0 +1,468 @@
+{
+  "id": "arp-resolution",
+  "title": "ARP 地址解析",
+  "protocol": "arp",
+  "view": {
+    "kind": "network"
+  },
+  "topology": {
+    "layout": {
+      "view": "network",
+      "note": "三设备同广播域：主机 A — 交换机 — 主机 B（G2 三槽位布局）"
+    },
+    "participants": [
+      {
+        "id": "a",
+        "label": "主机 A",
+        "stateLabel": "主机 A",
+        "role": "host",
+        "kind": "laptop",
+        "address": {
+          "ip": "10.0.0.1",
+          "mac": "02:00:00:00:00:0A"
+        }
+      },
+      {
+        "id": "sw",
+        "label": "交换机",
+        "stateLabel": "交换机",
+        "role": "switch",
+        "kind": "switch"
+      },
+      {
+        "id": "b",
+        "label": "主机 B",
+        "stateLabel": "主机 B",
+        "role": "host",
+        "kind": "laptop",
+        "address": {
+          "ip": "10.0.0.2",
+          "mac": "02:00:00:00:00:0B"
+        }
+      }
+    ],
+    "domains": [
+      {
+        "id": "lan-a",
+        "label": "局域网 10.0.0.0/24",
+        "members": [
+          "a",
+          "sw",
+          "b"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "from": "a",
+        "to": "sw",
+        "medium": "wired"
+      },
+      {
+        "from": "sw",
+        "to": "b",
+        "medium": "wired"
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "main",
+      "label": "主流程",
+      "initialState": {
+        "a": {
+          "arp-cache": []
+        },
+        "sw": {
+          "mac-table": []
+        },
+        "b": {}
+      },
+      "steps": [
+        {
+          "id": "cache-placeholder",
+          "title": "缓存未命中，创建占位条目",
+          "signal": "ARP 缓存无 10.0.0.2 → 建 incomplete 占位",
+          "caption": "主机 A 要把数据发给 10.0.0.2，先查自己的 ARP 缓存：没有这条映射。A 立刻建一条 state=incomplete 的占位条目表示「正在解析」，此时还没有 MAC 可用。",
+          "description": "占位条目的作用是先把「这个 IP 正在解析」记下来，避免同一目标在等待应答期间被重复发起解析（真实内核还会把同一目标的待发报文排队）。此刻条目里没有 MAC，协议栈连一个帧都发不出去，只能等应答回来填充。注意这张表属于主机 A，记录的是「某个 IP 对应哪个 MAC」——它和交换机的 MAC 地址表回答的是完全不同的问题。",
+          "events": [
+            {
+              "id": "e01",
+              "kind": "process",
+              "from": "a",
+              "to": {
+                "kind": "device",
+                "id": "a"
+              },
+              "payload": null,
+              "dependsOn": [],
+              "note": "占位已建 · 等待应答填充 MAC"
+            }
+          ],
+          "stateDeltas": [
+            {
+              "id": "d01",
+              "device": "a",
+              "afterEvent": "e01",
+              "changes": [
+                {
+                  "table": "arp-cache",
+                  "op": "upsert",
+                  "entry": {
+                    "ip": "10.0.0.2",
+                    "state": "incomplete"
+                  }
+                }
+              ]
+            }
+          ],
+          "traceRow": null
+        },
+        {
+          "id": "request-broadcast",
+          "title": "广播 ARP 请求",
+          "signal": "Who has 10.0.0.2? Tell 10.0.0.1",
+          "caption": "A 不知道 10.0.0.2 的 MAC，只能广播：以太网目的地址填 FF:FF:FF:FF:FF:FF，ARP 里写清发送方 MAC/IP 与要解析的目标 IP。这个帧会向同广播域的所有端口送出。",
+          "description": "为什么只能广播：MAC 地址是二层标识，而「10.0.0.2 在哪」是三层问题，主机没有目录可查，只能问整个广播域。请求里的 Target MAC 字段填全 0，因为正是不知道才要问。谁的目标 IP 匹配，谁才应答；其余主机收到后丢弃这一帧——本课为突出主线，没有展开它们通常也会顺手记下发送方映射的副作用。",
+          "events": [
+            {
+              "id": "e02",
+              "kind": "broadcast",
+              "from": "a",
+              "to": {
+                "kind": "broadcast",
+                "domain": "lan-a",
+                "excludeFrom": [
+                  "b"
+                ]
+              },
+              "payload": {
+                "proto": "ARP",
+                "summary": "Who has 10.0.0.2? Tell 10.0.0.1",
+                "size": 60,
+                "cat": "broadcast",
+                "fields": {
+                  "Opcode": 1,
+                  "SenderMAC": "02:00:00:00:00:0A",
+                  "SenderIP": "10.0.0.1",
+                  "TargetMAC": "00:00:00:00:00:00",
+                  "TargetIP": "10.0.0.2",
+                  "SrcMAC": "02:00:00:00:00:0A",
+                  "DstMAC": "FF:FF:FF:FF:FF:FF"
+                }
+              },
+              "dependsOn": [
+                "e01"
+              ],
+              "note": "广播帧 · 域内全部设备可见"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": {
+            "time": "0.000",
+            "src": "02:00:00:00:00:0A",
+            "dst": "FF:FF:FF:FF:FF:FF",
+            "proto": "ARP",
+            "info": "Who has 10.0.0.2? Tell 10.0.0.1",
+            "size": 60,
+            "cat": "broadcast",
+            "eventRef": "e02"
+          }
+        },
+        {
+          "id": "switch-learn-flood",
+          "title": "交换机学习源 MAC 并泛洪",
+          "signal": "学习 02:00:00:00:00:0A → G0/1｜广播泛洪到 G0/2",
+          "caption": "交换机收到帧，先看源 MAC：把它与入端口 G0/1 记进 MAC 地址表（收帧即学）。目的 MAC 是广播地址，表里查不到，于是向除入端口外的所有端口泛洪，只有 G0/2 上的主机 B 会收到。",
+          "description": "为什么「收帧即学」：交换机不需要任何协议，只看每个进入帧的源 MAC 就能逐步建表，这是透明桥接的核心。为什么广播必须泛洪：广播地址永远不会出现在 MAC 表里，交换机只能复制到其余端口。这里学的是「某个 MAC 从哪个端口来」，和主机 A 那张「某个 IP 对应哪个 MAC」的表既不同设备、也不同语义。",
+          "events": [
+            {
+              "id": "e03",
+              "kind": "broadcast",
+              "from": "sw",
+              "to": {
+                "kind": "broadcast",
+                "domain": "lan-a",
+                "excludeFrom": [
+                  "a"
+                ]
+              },
+              "payload": {
+                "proto": "ARP",
+                "summary": "Who has 10.0.0.2? Tell 10.0.0.1",
+                "size": 60,
+                "cat": "broadcast",
+                "fields": {
+                  "Opcode": 1,
+                  "SenderMAC": "02:00:00:00:00:0A",
+                  "SenderIP": "10.0.0.1",
+                  "TargetMAC": "00:00:00:00:00:00",
+                  "TargetIP": "10.0.0.2",
+                  "SrcMAC": "02:00:00:00:00:0A",
+                  "DstMAC": "FF:FF:FF:FF:FF:FF"
+                }
+              },
+              "dependsOn": [
+                "e02"
+              ],
+              "note": "已学 02:00:00:00:00:0A@G0/1 · 泛洪到 G0/2"
+            }
+          ],
+          "stateDeltas": [
+            {
+              "id": "d02",
+              "device": "sw",
+              "afterEvent": "e03",
+              "changes": [
+                {
+                  "table": "mac-table",
+                  "op": "learn",
+                  "entry": {
+                    "vlan": 1,
+                    "mac": "02:00:00:00:00:0A",
+                    "port": "G0/1"
+                  }
+                }
+              ]
+            }
+          ],
+          "traceRow": {
+            "time": "0.000",
+            "src": "02:00:00:00:00:0A",
+            "dst": "FF:FF:FF:FF:FF:FF",
+            "proto": "ARP",
+            "info": "泛洪 · Who has 10.0.0.2? Tell 10.0.0.1",
+            "size": 60,
+            "cat": "broadcast",
+            "eventRef": "e03"
+          }
+        },
+        {
+          "id": "target-ip-match",
+          "title": "主机 B 判断目标 IP 是自己",
+          "signal": "Target IP 10.0.0.2 = 本机地址 → 必须应答",
+          "caption": "B 收到这一帧，解出 ARP 请求：Target IP 是 10.0.0.2，正是自己的地址，所以要应答；如果换成别的主机，这一帧会被直接丢弃，不会有任何回应。",
+          "description": "这个判断只在「目标协议地址等于本机地址」时成立，广播域的规模因此不会放大成 N 份应答——一次广播只有一个正确答案。应答之前 B 需要知道 A 的 MAC，而请求里已经带着 Sender MAC，所以 B 不必再发一次 ARP 请求，可以直接单播回复。这也是 ARP 只需要一次往返的原因。",
+          "events": [
+            {
+              "id": "e04",
+              "kind": "process",
+              "from": "b",
+              "to": {
+                "kind": "device",
+                "id": "b"
+              },
+              "payload": null,
+              "dependsOn": [
+                "e03"
+              ],
+              "note": "命中本机 · 准备应答"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "reply-unicast",
+          "title": "主机 B 单播 ARP 应答",
+          "signal": "10.0.0.2 is at 02:00:00:00:00:0B",
+          "caption": "B 构造 ARP 应答：Opcode=2，Sender 填自己的 MAC 与 IP，Target 填 A 的 MAC 与 IP。因为已经知道 A 的 MAC，这一帧是单播——目的地址 02:00:00:00:00:0A，不再是广播。",
+          "description": "请求广播、应答单播，是 ARP 流量最典型的形态：广播只在「不知道」时使用，一旦知道就点对点。交换机收到这一帧，同样先在 G0/2 上学习 02:00:00:00:00:0B 与入端口的对应——这一步和 B 是否应答无关，交换机对每个进入的帧都做源 MAC 学习。",
+          "events": [
+            {
+              "id": "e05",
+              "kind": "unicast",
+              "from": "b",
+              "to": {
+                "kind": "device",
+                "id": "sw"
+              },
+              "payload": {
+                "proto": "ARP",
+                "summary": "10.0.0.2 is at 02:00:00:00:00:0B",
+                "size": 60,
+                "cat": "response",
+                "fields": {
+                  "Opcode": 2,
+                  "SenderMAC": "02:00:00:00:00:0B",
+                  "SenderIP": "10.0.0.2",
+                  "TargetMAC": "02:00:00:00:00:0A",
+                  "TargetIP": "10.0.0.1",
+                  "SrcMAC": "02:00:00:00:00:0B",
+                  "DstMAC": "02:00:00:00:00:0A"
+                }
+              },
+              "dependsOn": [
+                "e04"
+              ],
+              "note": "已学 02:00:00:00:00:0B@G0/2 · 应答上行"
+            }
+          ],
+          "stateDeltas": [
+            {
+              "id": "d03",
+              "device": "sw",
+              "afterEvent": "e05",
+              "changes": [
+                {
+                  "table": "mac-table",
+                  "op": "learn",
+                  "entry": {
+                    "vlan": 1,
+                    "mac": "02:00:00:00:00:0B",
+                    "port": "G0/2"
+                  }
+                }
+              ]
+            }
+          ],
+          "traceRow": {
+            "time": "0.001",
+            "src": "02:00:00:00:00:0B",
+            "dst": "02:00:00:00:00:0A",
+            "proto": "ARP",
+            "info": "10.0.0.2 is at 02:00:00:00:00:0B",
+            "size": 60,
+            "cat": "response",
+            "eventRef": "e05"
+          }
+        },
+        {
+          "id": "switch-forward",
+          "title": "交换机查表，单播转发",
+          "signal": "查表 02:00:00:00:00:0A → G0/1｜只从一个端口发出",
+          "caption": "交换机在 MAC 表里查到 02:00:00:00:00:0A 对应 G0/1，只从这一个端口发出，不再泛洪。帧的源 MAC 仍是 B 的地址，交换机不做任何改写，也不会为这次转发新增表项。",
+          "description": "查表与学习是两件独立的事：查表看目的 MAC，学习看源 MAC。02:00:00:00:00:0A 在第 3 步已经学过，这次命中既不新增也不改动任何表项——同一 MAC 再次出现只会刷新老化计时器，表内容不变。只有表里查不到目的 MAC 时，交换机才退化成泛洪（未知单播泛洪）。",
+          "events": [
+            {
+              "id": "e06",
+              "kind": "unicast",
+              "from": "sw",
+              "to": {
+                "kind": "device",
+                "id": "a"
+              },
+              "payload": {
+                "proto": "ARP",
+                "summary": "10.0.0.2 is at 02:00:00:00:00:0B",
+                "size": 60,
+                "cat": "response",
+                "fields": {
+                  "Opcode": 2,
+                  "SenderMAC": "02:00:00:00:00:0B",
+                  "SenderIP": "10.0.0.2",
+                  "TargetMAC": "02:00:00:00:00:0A",
+                  "TargetIP": "10.0.0.1",
+                  "SrcMAC": "02:00:00:00:00:0B",
+                  "DstMAC": "02:00:00:00:00:0A"
+                }
+              },
+              "dependsOn": [
+                "e05"
+              ],
+              "note": "命中 G0/1 · 未新增表项"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": {
+            "time": "0.001",
+            "src": "02:00:00:00:00:0B",
+            "dst": "02:00:00:00:00:0A",
+            "proto": "ARP",
+            "info": "查表命中 · 10.0.0.2 is at 02:00:00:00:00:0B",
+            "size": 60,
+            "cat": "response",
+            "eventRef": "e06"
+          }
+        },
+        {
+          "id": "cache-update",
+          "title": "主机 A 把缓存更新为 reachable",
+          "signal": "10.0.0.2 → 02:00:00:00:00:0B（reachable）",
+          "caption": "A 收到应答，把 MAC 填进第 1 步那条条目，状态从 incomplete 变成 reachable。到这一步，A 才真正具备给 10.0.0.2 发帧的能力。",
+          "description": "缓存条目的生命周期：incomplete（正在解析，等待应答）→ reachable（可用，通常带老化计时器）→ stale（过期但可先试用，同时触发再次确认）。条目存在不等于永久有效：对端换网卡、IP 被别的设备接管，都只能靠老化与重新解析发现，这正是 ARP 欺骗能生效的前提。",
+          "events": [
+            {
+              "id": "e07",
+              "kind": "process",
+              "from": "a",
+              "to": {
+                "kind": "device",
+                "id": "a"
+              },
+              "payload": null,
+              "dependsOn": [
+                "e06"
+              ],
+              "note": "MAC 已填充"
+            }
+          ],
+          "stateDeltas": [
+            {
+              "id": "d04",
+              "device": "a",
+              "afterEvent": "e07",
+              "changes": [
+                {
+                  "table": "arp-cache",
+                  "op": "upsert",
+                  "entry": {
+                    "ip": "10.0.0.2",
+                    "mac": "02:00:00:00:00:0B",
+                    "state": "reachable"
+                  }
+                }
+              ]
+            }
+          ],
+          "traceRow": null
+        },
+        {
+          "id": "ip-data",
+          "title": "用学到的 MAC 封装 IP 数据",
+          "signal": "IP 10.0.0.1 → 10.0.0.2｜目的 MAC 02:00:00:00:00:0B",
+          "caption": "A 把 IP 包交给以太网：目的 MAC 用缓存里的 02:00:00:00:00:0B，源 MAC 是自己的。交换机按 MAC 表把它转给 B，B 收到后交付上层——全程 IP 地址没有变，变的只是二层封装。",
+          "description": "封装关系：IP 包是载荷，以太网帧是信封；信封上的地址只在当前链路有效，每经过一台三层设备就会被重写，而 IP 地址端到端保持不变。本课拓扑只有一个二层域，所以一次解析就够用；跨网段时 A 解析的是网关的 MAC，而不是最终目的主机的 MAC。",
+          "events": [
+            {
+              "id": "e08",
+              "kind": "unicast",
+              "from": "a",
+              "to": {
+                "kind": "device",
+                "id": "b"
+              },
+              "payload": {
+                "proto": "ICMP",
+                "summary": "Echo request 10.0.0.1 → 10.0.0.2",
+                "size": 74,
+                "cat": "generic",
+                "fields": {
+                  "SrcMAC": "02:00:00:00:00:0A",
+                  "DstMAC": "02:00:00:00:00:0B",
+                  "SrcIP": "10.0.0.1",
+                  "DstIP": "10.0.0.2"
+                }
+              },
+              "dependsOn": [
+                "e07"
+              ],
+              "note": "ARP 解析完成 · 数据发出"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": {
+            "time": "0.002",
+            "src": "10.0.0.1",
+            "dst": "10.0.0.2",
+            "proto": "ICMP",
+            "info": "Echo (ping) request · 目的 MAC 02:00:00:00:00:0B",
+            "size": 74,
+            "cat": "generic",
+            "eventRef": "e08"
+          }
+        }
+      ]
+    }
+  ]
+}

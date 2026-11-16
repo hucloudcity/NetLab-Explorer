@@ -6,7 +6,7 @@
       "en": "NETWORK PROTOCOLS",
       "color": "#8052c7",
       "dark": "#b79aeb",
-      "question": "在不可靠的网络上，一条连接如何可靠地建立、传输与关闭？"
+      "question": "围绕计算机网络中的核心协议与通信机制，理解数据如何在网络中传递，以及相关机制如何协同工作。"
     }
   ],
   "courses": [
@@ -17,6 +17,14 @@
       "hash": "tcp",
       "titleEn": "TCP CONNECTION LIFECYCLE",
       "order": 1
+    },
+    {
+      "demoId": "arp-resolution",
+      "knowledgeId": "NET-04-09",
+      "groupId": "network",
+      "hash": "arp",
+      "titleEn": "ARP ADDRESS RESOLUTION",
+      "order": 2
     }
   ]
 }

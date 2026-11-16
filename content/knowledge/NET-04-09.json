@@ -1,0 +1,84 @@
+{
+  "id": "NET-04-09",
+  "title": "ARP 地址解析：广播请求、单播应答与二层转发",
+  "categoryId": "M04",
+  "level": "basic",
+  "summary": "同一广播域内的两台主机要通信，先得把目的 IP 换成目的 MAC：A 广播 ARP 请求，交换机一边学习源 MAC 一边泛洪，B 发现目标 IP 是自己后单播应答，A 填充缓存后用这个 MAC 封装 IP 数据。",
+  "what": "ARP（Address Resolution Protocol）负责在同一广播域内把 IPv4 地址解析成链路层地址。请求方先建一条 state=incomplete 的缓存占位，然后以广播形式发出 ARP Request（目的 MAC 为 FF:FF:FF:FF:FF:FF，Target MAC 填 0）；交换机收帧即学源 MAC 与入端口，并把广播泛洪到其余端口；目标主机确认 Target IP 等于本机地址后，用请求里已知的发送方 MAC 单播回 ARP Reply（Opcode=2）；请求方把 MAC 填入缓存、状态转为 reachable，随后用该 MAC 封装后续 IP 数据。",
+  "why": "二层转发只认 MAC，而应用只给了 IP——中间这一步解析在 TCP/IP 里没有目录服务可查，只能靠广播询问 + 单播回答，用一次往返换取「知道对方 MAC」这件事。",
+  "principle": "请求广播、应答单播；交换机按源 MAC 学习、按目的 MAC 转发；主机的 ARP 缓存（IP↔MAC）与交换机的 MAC 地址表（MAC↔端口）是两套彼此独立的状态。",
+  "practicalScenario": "办公网里一台新接入的 PC ping 网关，第一个包往往先出现 ARP 请求；抓包里「Who has 10.0.0.1? Tell 10.0.0.2」后面紧跟一条单播 Reply，两者合起来才是一个完整的解析过程。排障时看 ARP 缓存（arp -a）判断解析是否成功、看交换机 MAC 表（show mac address-table）判断二层路径是否学对，是两条互不替代的线索。",
+  "commonProblems": [
+    "把 ARP 缓存与交换机 MAC 地址表混为一谈：前者在主机的 IP 层记录「IP 对应哪个 MAC」，后者在交换机的二层记录「MAC 从哪个端口来」，两者不同设备、不同键值、不同老化机制。",
+    "以为 ARP 请求会得到多份应答：广播确实送达域内所有设备，但只有 Target IP 等于本机地址的那一台会回应，其余静默丢弃。",
+    "以为交换机转发 ARP 帧时会改写源 MAC：转发不改写任何地址字段，两跳上的 Sender MAC、Sender IP、以太网源 MAC 必须完全一致，否则接收方学到的映射就是错的。"
+  ],
+  "packetStructure": {
+    "description": "ARP 报文在以太网上的固定长度为 28 字节，封装在以太网帧的数据字段中；下表中地址字段长度由 HLEN/PLEN 决定，以太网 + IPv4 时为 6 与 4 字节。",
+    "layout": [
+      {
+        "field": "Hardware type",
+        "bits": "16",
+        "note": "链路层类型，以太网为 1"
+      },
+      {
+        "field": "Protocol type",
+        "bits": "16",
+        "note": "上层协议，IPv4 为 0x0800"
+      },
+      {
+        "field": "Hardware length (HLEN)",
+        "bits": "8",
+        "note": "硬件地址长度，以太网为 6"
+      },
+      {
+        "field": "Protocol length (PLEN)",
+        "bits": "8",
+        "note": "协议地址长度，IPv4 为 4"
+      },
+      {
+        "field": "Operation",
+        "bits": "16",
+        "note": "1 = Request，2 = Reply"
+      },
+      {
+        "field": "Sender hardware address",
+        "bits": "48",
+        "note": "发送方 MAC；请求与应答都必须填写"
+      },
+      {
+        "field": "Sender protocol address",
+        "bits": "32",
+        "note": "发送方 IP"
+      },
+      {
+        "field": "Target hardware address",
+        "bits": "48",
+        "note": "请求中填全 0（未知），应答中填请求方的 MAC"
+      },
+      {
+        "field": "Target protocol address",
+        "bits": "32",
+        "note": "被解析的 IP；应答中填请求方 IP"
+      }
+    ]
+  },
+  "relatedKnowledge": [],
+  "sourceRefs": [
+    {
+      "sourceId": "rfc-826",
+      "purpose": "核对 ARP 报文格式、Opcode 取值、请求/应答的处理流程与「先查缓存再广播」的设计理由",
+      "sections": [],
+      "checkedAt": "2026-11-16",
+      "verificationNote": "RFC 826 是 1982 年的原始规范，正文按「THE PROBLEM / THE SOLUTION / Packet Format」等标题组织，没有可引用的编号小节，故 sections 留空；逐段比对报文格式与处理顺序，本课示例 IP/MAC/端口为教学取值，不对应真实抓包。"
+    }
+  ],
+  "demoRefs": [
+    "arp-resolution"
+  ],
+  "accessLevel": "free",
+  "status": "published",
+  "contentState": "original",
+  "createdAt": "2026-11-16",
+  "updatedAt": "2026-11-16"
+}

@@ -101,7 +101,7 @@ const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost',
       });
     }
   }
-  assert.equal(builtRows, 18, 'built artifact carries 18 packet rows (14 main + 4 alternate)');
+  assert.equal(builtRows, 23, 'built artifact carries 23 packet rows (TCP 18 + ARP 5)');
 
   let builtStages = 0;
   for (const lesson of data.lessons) {
@@ -119,6 +119,40 @@ const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost',
   assert.equal(tcp.nodes.length, 4, 'TCP topology has 4 participants');
   assert.equal(tcp.addresses.length, 4, 'TCP topology exposes 4 addresses');
   assert.equal(JSON.stringify(tcp.kinds), JSON.stringify(['laptop', 'router', 'cloud', 'server']), 'TCP exposes per-slot Device.kind');
+
+  // 报文行数按课程累计（不再写死全站 18 行）
+  const rowsOf = (lesson) => [...lesson.net.main, ...lesson.net.alternate].filter(Boolean).length;
+  assert.equal(data.lessons.length, 2, 'built artifact contains both courses');
+  assert.equal(rowsOf(tcp), 18, 'TCP keeps 18 packet rows (14 main + 4 alternate)');
+
+  // M2-B 第二阶段：ARP 三设备渲染回归（A — SW — B 全链路逐帧渲染）
+  {
+    const arp = data.lessons.find((l) => l.id === 'arp');
+    assert(arp, 'built artifact contains the arp lesson');
+    assert.equal(arp.steps.length, 8, 'ARP main scenario has 8 stages');
+    assert.equal(arp.net.main.length, 8, 'ARP trace array keeps one slot per stage');
+    assert.equal(rowsOf(arp), 5, 'ARP carries 5 packet rows (2 broadcast + 2 response + 1 data)');
+    assert.equal(arp.nodes.length, 3, 'ARP topology has 3 participants');
+    assert.equal(JSON.stringify(arp.kinds), JSON.stringify(['laptop', 'switch', 'laptop']), 'ARP exposes per-slot Device.kind (host / switch / host)');
+    assert.equal(JSON.stringify(arp.addresses), JSON.stringify(['10.0.0.1', '', '10.0.0.2']), 'ARP shows both host addresses and no address on the switch');
+    assert(!arp.alternate, 'ARP has no alternate scenario (fault button stays hidden)');
+
+    for (const [i, frame] of arp.steps.entries()) {
+      const id = `arp:main:${i}`;
+      const html = renderToStaticMarkup(React.createElement(MechanismScene, {
+        label: id, nodes: arp.nodes, frame, playing: true, speed: 1, stageKey: id, dark: false,
+        reducedMotion: false, scene: 'network', addresses: arp.addresses, kinds: arp.kinds,
+      }));
+      assert.equal((html.match(/data-node="/g) || []).length, 3, id + ' renders 3 participants');
+      assert.equal((html.match(/net-link-back/g) || []).length, 2, id + ' draws exactly 2 topology links (no ghost link to a 4th slot)');
+      assert(!html.includes('iso-antenna'), id + ' slot 1 is a switch glyph, not the router glyph');
+      assert.equal((html.match(/iso-led/g) || []).length, 4, id + ' switch LED row (4) with laptop hosts (0)');
+      const transfer = ['request', 'data'].includes(frame[6]);
+      assert.equal(html.includes('flow-particle iso-travel-dot'), transfer, id + ' only real frames carry a moving dot');
+      assert.equal(html.includes('id="active-path"'), frame[6] !== 'local', id + ' local steps draw no path');
+      if (transfer) assert.equal(/marker-end="/.test((html.match(/<path id="active-path"[^>]*>/) || [])[0] || ''), true, id + ' transfer frames keep the arrowhead');
+    }
+  }
 
   // All participant pairs use the clear central corridor, avoiding unrelated modules and labels.
   for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (a !== b) {

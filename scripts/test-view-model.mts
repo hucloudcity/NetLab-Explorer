@@ -29,8 +29,14 @@ const demo = DemoSchema.parse(read('content/demos/tcp-lifecycle.json'));
 const kp = KnowledgePointSchema.parse(read('content/knowledge/NET-04-08.json'));
 const sources = (read('content/sources.json') as unknown[]).map((s) => SourceSchema.parse(s));
 const catalog = CatalogSchema.parse(read('content/catalog.json'));
+// 本文件是 TCP 单课夹具：只取 tcp 这一门课。多课程后完整目录会引用本夹具未加载的演示，
+// 触发 I9（那属于目录完整性的构建期校验，由 build-data / check-content 覆盖），与这里的断言无关。
+const tcpOnlyCatalog = CatalogSchema.parse({
+  groups: catalog.groups,
+  courses: catalog.courses.filter((c) => c.hash === 'tcp'),
+});
 
-const site = buildSite({ demos: [demo], knowledge: [kp], sources, catalog });
+const site = buildSite({ demos: [demo], knowledge: [kp], sources, catalog: tcpOnlyCatalog });
 const lesson = site.lessons[0];
 if (!lesson) throw new Error('site.lessons 为空');
 const alt = lesson.alternate;
@@ -99,13 +105,13 @@ const bareStep = bare.scenarios[0]?.steps[3];
 if (!bareStep) throw new Error('夹具缺少第 4 步');
 bareStep.stateDeltas = [];
 delete bareStep.events[0]?.note;
-assert.throws(() => buildSite({ demos: [bare], knowledge: [kp], sources, catalog }), /I6/, 'B6 无观察点且无 note 时报 I6');
+assert.throws(() => buildSite({ demos: [bare], knowledge: [kp], sources, catalog: tcpOnlyCatalog }), /I6/, 'B6 无观察点且无 note 时报 I6');
 n++;
 
 // 短名缺省回退 label（不是把角色中文化写进代码）
 const noShort = structuredClone(demo) as Demo;
 for (const d of noShort.topology.participants) delete d.stateLabel;
-const noShortLesson = buildSite({ demos: [noShort], knowledge: [kp], sources, catalog }).lessons[0];
+const noShortLesson = buildSite({ demos: [noShort], knowledge: [kp], sources, catalog: tcpOnlyCatalog }).lessons[0];
 eq(noShortLesson?.steps[0]?.[5], '客户端 SYN_SENT · Web 服务器 LISTEN', 'B6b stateLabel 缺省回退 Device.label');
 eq(noShortLesson?.steps[1]?.[5], 'Web 服务器 SYN_RCVD · 半连接队列', 'B6c 回退后仍按设备短名成句');
 
@@ -149,7 +155,7 @@ const gap = structuredClone(demo) as Demo;
 const gapStep = gap.scenarios[0]?.steps[1];
 if (!gapStep) throw new Error('夹具缺少第 2 步');
 gapStep.traceRow = null;
-const gapLesson = buildSite({ demos: [gap], knowledge: [kp], sources, catalog }).lessons[0];
+const gapLesson = buildSite({ demos: [gap], knowledge: [kp], sources, catalog: tcpOnlyCatalog }).lessons[0];
 eq(gapLesson?.net.main.length, 14, 'D8 无报文步骤仍等长（null 占位）');
 eq(gapLesson?.net.main[1], null, 'D8b 无报文步骤为 null');
 ok(gapLesson?.net.main[2] !== null, 'D8c 其后步骤不受影响（不按下标错位）');
@@ -159,7 +165,7 @@ const badRef = structuredClone(demo) as Demo;
 const badStep = badRef.scenarios[0]?.steps[4];
 if (!badStep?.traceRow) throw new Error('夹具缺少第 5 步行');
 badStep.traceRow.eventRef = 'e01';
-assert.throws(() => buildSite({ demos: [badRef], knowledge: [kp], sources, catalog }), /I2/, 'D9 eventRef 不指向本步时报 I2');
+assert.throws(() => buildSite({ demos: [badRef], knowledge: [kp], sources, catalog: tcpOnlyCatalog }), /I2/, 'D9 eventRef 不指向本步时报 I2');
 n++;
 
 // cat 与 payload.cat 不一致 → I3
@@ -167,7 +173,7 @@ const badCat = structuredClone(demo) as Demo;
 const badCatRow = badCat.scenarios[0]?.steps[4]?.traceRow;
 if (!badCatRow) throw new Error('夹具缺少第 5 步行');
 badCatRow.cat = 'sdata';
-assert.throws(() => buildSite({ demos: [badCat], knowledge: [kp], sources, catalog }), /I3/, 'D10 cat 与 payload 不一致时报 I3');
+assert.throws(() => buildSite({ demos: [badCat], knowledge: [kp], sources, catalog: tcpOnlyCatalog }), /I3/, 'D10 cat 与 payload 不一致时报 I3');
 n++;
 
 /* ================= E 站点（5） ================= */
@@ -181,17 +187,17 @@ ok(rfcCard?.kind === '具体机制资料' && site.sources['csapp-3e']?.kind === 
 eq(lesson.related, [], 'E5 related 为空数组（单篇不互指）');
 
 /* ================= F 纯函数（4） ================= */
-const again = buildSite({ demos: [demo], knowledge: [kp], sources, catalog });
+const again = buildSite({ demos: [demo], knowledge: [kp], sources, catalog: tcpOnlyCatalog });
 ok(JSON.stringify(again) === JSON.stringify(site), 'F1 两次构建逐字节相同');
 const frozen = deepFreeze(structuredClone(demo) as Demo);
-assert.doesNotThrow(() => buildSite({ demos: [frozen], knowledge: [kp], sources, catalog }), 'F2 输入深冻结仍可构建');
+assert.doesNotThrow(() => buildSite({ demos: [frozen], knowledge: [kp], sources, catalog: tcpOnlyCatalog }), 'F2 输入深冻结仍可构建');
 n++;
-const frozenLabels = buildSite({ demos: [frozen], knowledge: [kp], sources, catalog }).lessons[0]?.steps.map((f) => f[5]);
+const frozenLabels = buildSite({ demos: [frozen], knowledge: [kp], sources, catalog: tcpOnlyCatalog }).lessons[0]?.steps.map((f) => f[5]);
 eq(frozenLabels, lesson.steps.map((f) => f[5]), 'F3 冻结输入的派生结果不变');
 ok(!/Date|performance/.test(fs.readFileSync(path.join(ROOT, 'src/engine/view-model.ts'), 'utf8')), 'F4 适配层不读时间/性能接口');
 
 /* ================= I9：目录与知识点引用 ================= */
-const broken = structuredClone(catalog);
+const broken = structuredClone(tcpOnlyCatalog);
 if (!broken.courses[0]) throw new Error('目录为空');
 broken.courses[0].demoId = 'missing-demo';
 assert.throws(() => buildSite({ demos: [demo], knowledge: [kp], sources, catalog: broken }), /I9/, 'G1 目录指向不存在的演示时报 I9');
