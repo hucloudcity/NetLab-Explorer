@@ -52,14 +52,14 @@ const readings = mech.readings as Record<string, Reading>;
 const lessons = site.lessons;
 const ids = new Set(lessons.map((l) => l.id));
 
-/* ---- 站点级契约（M2-B：多课程，不再假定全站只有一门课） ---- */
+/* ---- 站点级契约（M2-B/C：多课程，不再假定全站只有一门课） ---- */
 assert.equal(site.groups.length, 1, 'single group');
-assert.equal(lessons.length, 2, 'this build must contain exactly two courses (tcp + arp)');
-assert.deepEqual([...ids], ['tcp', 'arp'], 'courses follow catalog order: tcp then arp');
-assert.ok(lessons.every((l) => l.group === 0), 'both courses belong to the only group');
+assert.equal(lessons.length, 3, 'this build must contain exactly three courses (tcp + arp + dns)');
+assert.deepEqual([...ids], ['tcp', 'arp', 'dns'], 'courses follow catalog order: tcp, arp, dns');
+assert.ok(lessons.every((l) => l.group === 0), 'all courses belong to the only group');
 
 /** 课程级参与设备数：不再对全站写死 4，也不允许课程自行「多一台少一台」而不更新契约。 */
-const EXPECTED_NODES: Readonly<Record<string, number>> = { tcp: 4, arp: 3 };
+const EXPECTED_NODES: Readonly<Record<string, number>> = { tcp: 4, arp: 3, dns: 3 };
 
 for (const l of lessons) {
   const d = details[l.id];
@@ -76,6 +76,7 @@ for (const l of lessons) {
 }
 assert.ok(details.tcp?.foundation && (details.tcp?.readings.length ?? 0) > 0, 'TCP keeps its CSAPP foundation and readings');
 assert.equal(details.arp?.readings.length, 0, 'ARP must not claim CSAPP readings it does not have');
+assert.equal(details.dns?.readings.length, 0, 'DNS must not claim CSAPP readings it does not have');
 
 const kinds = new Set(['request', 'data', 'control', 'check', 'reject', 'lost', 'local', 'compare']);
 let count = 0;
@@ -261,7 +262,115 @@ assert.deepEqual(kpRaw.demoRefs, ['arp-resolution'], 'the knowledge point points
 assert.ok(kpRaw.sourceRefs.some((r) => r.sourceId === 'rfc-826'), 'the knowledge point cites RFC 826');
 assert.ok(site.sources['rfc-826'], 'RFC 826 is in the built source ledger');
 
+/* ---- DNS 专项契约（M2-C：三设备链式拓扑 + 两场景缓存语义 + 事务配对） ---- */
+{
+  const dns = lessons.find((l) => l.id === 'dns');
+  assert.ok(dns, 'dns lesson');
+  assert.equal(dns.scene, 'network', 'dns uses the network scene');
+  assert.equal(dns.nodes.length, 3, 'dns has three participants (client / IP network / resolver)');
+  assert.equal(JSON.stringify(dns.kinds), JSON.stringify(['laptop', 'cloud', 'server']), 'dns kinds drive the G1 glyphs');
+  assert.equal(dns.addresses[0], '192.0.2.10', 'dns slot 0 is the client');
+  assert.equal(dns.addresses[2], '192.0.2.53:53', 'dns slot 2 is the recursive resolver at port 53');
+  assert.equal(dns.steps.length, 8, 'dns main scenario has 8 stages');
+  assert.ok(dns.alternate && dns.alternate.steps.length === 4, 'dns carries the 4-stage cache-hit alternate scenario');
+  assert.equal(dns.net.main.length, 8, 'dns keeps one trace slot per stage (nulls must not be shortened)');
+  const dnsRows = dns.net.main.filter((r): r is TraceRowView => r !== null);
+  assert.equal(dnsRows.length, 2, 'dns has exactly 2 packet rows');
+  // 跨 realm 陷阱：map 结果沿用源数组的 realm 构造器，deepStrictEqual 会假失败 —— 统一按 JSON 文本比较。
+  assert.equal(JSON.stringify(dnsRows.map((r) => r.cat)), JSON.stringify(['query', 'response']), 'dns rows are query then response');
+  assert.equal(dnsRows[0]?.src, '192.0.2.10', 'query row is sent from the client');
+  assert.equal(dnsRows[0]?.dst, '192.0.2.53', 'query row travels client → resolver');
+  assert.equal(dnsRows[1]?.src, '192.0.2.53', 'response row is sent from the resolver');
+  assert.equal(dnsRows[1]?.dst, '192.0.2.10', 'response row travels resolver → client');
+  assert.equal(dns.steps.filter((f) => f[6] === 'local').length, 6, 'six local processing stages');
+  assert.equal(dns.net.main.filter((r) => r === null).length, 6, 'the six local stages are exactly the null rows');
+  assert.ok(Array.isArray(dns.stepNotes) && dns.stepNotes.length === 8 && dns.stepNotes.every((n) => n.trim().length > 40), 'dns carries 8 deep notes');
+
+  const dnsDemo = DemoSchema.parse(JSON.parse(fs.readFileSync(path.join(ROOT, 'content', 'demos', 'dns-resolution.json'), 'utf8')));
+  assert.equal(dnsDemo.topology.participants.length, 3, 'dns demo declares 3 devices');
+  assert.equal(dnsDemo.topology.links.length, 2, 'dns demo declares 2 links (client—network—resolver)');
+  const [dnsMain, dnsAlt] = dnsDemo.scenarios;
+  assert.ok(dnsMain && dnsAlt && dnsMain.steps.length === 8 && dnsAlt.steps.length === 4, 'dns demo declares 8 main + 4 alternate steps');
+
+  const dnsStepAt = (i: number) => {
+    const s = dnsMain.steps[i];
+    if (!s) throw new Error('dns demo step ' + i + ' missing');
+    return s;
+  };
+  const dnsFields = (i: number): Record<string, string> => {
+    const f = dnsStepAt(i).events[0]?.payload?.fields;
+    if (!f) throw new Error('dns demo step ' + i + ' has no payload fields');
+    return Object.fromEntries(Object.entries(f).map(([k, v]) => [k, String(v)]));
+  };
+
+  // 事件关联：Query/Response 各一次网络往返，响应对应查询（dependsOn e03），traceRow 挂本步事件
+  const qEv = dnsStepAt(2).events[0];
+  const rEv = dnsStepAt(5).events[0];
+  assert.equal(qEv?.kind, 'unicast', 'step 3 carries a unicast query event');
+  assert.equal((qEv as { to?: { id?: string } } | undefined)?.to?.id, 'dns', 'step 3 sends the query to the resolver');
+  assert.equal(rEv?.kind, 'unicast', 'step 6 carries a unicast response event');
+  assert.equal((rEv as { from?: string } | undefined)?.from, 'dns', 'step 6 returns the response from the resolver');
+  assert.deepEqual(rEv?.dependsOn, ['e03'], 'the response is paired with the query (dependsOn e03)');
+  // eventRef 留在源 JSON（构建产物 TraceRowView 不携带），从 dnsDemo 侧断言事件↔行配对
+  assert.equal(qEv?.id, dnsStepAt(2).traceRow?.eventRef, 'query traceRow references its event');
+  assert.equal(rEv?.id, dnsStepAt(5).traceRow?.eventRef, 'response traceRow references its event');
+
+  // UDP 53 端口翻转 + 事务 ID 配对 + Question/Answer 一致
+  const qUdp = (qEv?.payload as { layers?: { name: string; keyValues?: Record<string, string> }[] } | undefined)?.layers?.[0]?.keyValues;
+  const rUdp = (rEv?.payload as { layers?: { name: string; keyValues?: Record<string, string> }[] } | undefined)?.layers?.[0]?.keyValues;
+  assert.ok(qUdp && qUdp['源端口'] === '51732' && qUdp['目的端口'] === '53', 'query uses ephemeral src port → 53');
+  assert.ok(rUdp && rUdp['源端口'] === '53' && rUdp['目的端口'] === '51732', 'response ports are flipped back (53 → ephemeral)');
+  const qF = dnsFields(2);
+  const rF = dnsFields(5);
+  assert.equal(qF['ID（事务标识）'], rF['ID（事务标识）'], 'query and response share the transaction ID');
+  assert.equal(qF.QNAME, 'www.example.com', 'the query asks for www.example.com');
+  assert.ok(typeof qF.QTYPE === 'string' && qF.QTYPE.startsWith('A'), 'the query asks for a type A record (annotated value: ' + qF.QTYPE + ')');
+  // Answer 段是结构化数组（非字符串字段），直接取原始 payload 断言与 Question 的对应关系
+  const rAnswer = (rEv?.payload as { fields?: Record<string, unknown> } | undefined)?.fields?.Answer as
+    | { Name?: string; Type?: string; 地址?: string }[]
+    | undefined;
+  assert.ok(Array.isArray(rAnswer) && rAnswer.length === 1, 'the response carries exactly one answer record');
+  assert.equal(rAnswer?.[0]?.Name, 'www.example.com', 'the answer name matches the question');
+  assert.equal(rAnswer?.[0]?.Type, 'A', 'the answer type matches the question');
+  assert.equal(rAnswer?.[0]?.地址, '93.184.216.34', 'the answer address is the resolved IPv4');
+
+  // dns-cache 是客户端专用状态：全 demo 只有 c 写 dns-cache；两场景条目一致且 status=valid（教学模型状态）
+  const dnsOwners = (table: string): string[] => {
+    const set = new Set<string>();
+    for (const sc of dnsDemo.scenarios) for (const s of sc.steps) for (const d of s.stateDeltas) for (const ch of d.changes) if (ch.table === table && d.device) set.add(d.device);
+    return [...set].sort();
+  };
+  assert.deepEqual(dnsOwners('dns-cache'), ['c'], 'only the client owns a dns-cache');
+  assert.deepEqual(dnsOwners('arp-cache'), [], 'the dns demo must not write an ARP cache');
+  assert.deepEqual(dnsOwners('mac-table'), [], 'the dns demo must not write a MAC table');
+  const dnsDelta = dnsStepAt(6).stateDeltas.flatMap((d) => d.changes).find((c) => c.table === 'dns-cache');
+  const entry = (dnsDelta as { entry?: Record<string, string> } | undefined)?.entry;
+  assert.ok(entry && entry.name === 'www.example.com' && entry.type === 'A' && entry.value === '93.184.216.34', 'the cached entry matches the answer (name/type/value)');
+  assert.equal(entry?.ttl, '3600', 'the cached entry keeps TTL=3600');
+  assert.equal(entry?.status, 'valid', 'the cached entry is marked valid (teaching-model status, not a DNS protocol field)');
+  const altEntry = dnsAlt.initialState['c']?.['dns-cache']?.[0] as Record<string, string> | undefined;
+  assert.ok(altEntry && JSON.stringify(altEntry) === JSON.stringify(entry), 'the alternate scenario starts with the same cache entry (cache hit)');
+
+  // 课程目录与知识内容引用完整
+  const dnsEntry = catalogRaw.courses.find((c) => c.hash === 'dns');
+  assert.ok(dnsEntry, 'catalog registers the dns course');
+  assert.equal(dnsEntry.demoId, 'dns-resolution');
+  assert.equal(dnsEntry.knowledgeId, 'NET-04-10');
+  assert.equal(dnsEntry.groupId, 'network');
+  const dnsKpRaw = JSON.parse(fs.readFileSync(path.join(ROOT, 'content', 'knowledge', 'NET-04-10.json'), 'utf8')) as {
+    demoRefs: string[];
+    sourceRefs: { sourceId: string }[];
+  };
+  assert.deepEqual(dnsKpRaw.demoRefs, ['dns-resolution'], 'the DNS knowledge point points back at the demo');
+  for (const sid of ['rfc-1034', 'rfc-1035', 'rfc-2181', 'rfc-8767']) {
+    assert.ok(dnsKpRaw.sourceRefs.some((r) => r.sourceId === sid), 'the DNS knowledge point cites ' + sid);
+  }
+  for (const sid of ['rfc-1034', 'rfc-1035', 'rfc-2181', 'rfc-8767']) {
+    assert.ok(site.sources[sid], sid + ' is in the built source ledger');
+  }
+}
+
 console.log(
-  `Content contracts passed: 2 lessons (TCP 14 steps + ARP 8 steps), ${count} typed stages, valid references. ` +
+  `Content contracts passed: 3 lessons (TCP 14 + ARP 8 + DNS 8/4 steps), ${count} typed stages, valid references. ` +
     'These checks do not prove protocol correctness.',
 );

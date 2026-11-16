@@ -130,9 +130,12 @@ export function relationOf(ev: DemoEvent, initiatorId: string): RelationKind {
   if (ev.kind === 'broadcast') return 'request';
   const cat = ev.payload?.cat;
   if (cat === 'cdata' || cat === 'sdata') return 'data';
+  // M2-C：DNS Query 是请求语义（期望解析器给出答案），不落「数据传递」；
+  // response 保持默认 'data'（与 ARP Reply 先例一致，链路层应答即数据传递）。
+  if (cat === 'query') return 'request';
   if (cat === 'fin') return /\bFIN\b/i.test(ev.payload?.summary ?? '') ? 'request' : 'data';
   if (cat === 'hand') return ev.from === initiatorId ? 'request' : 'data';
-  // query / response / broadcast / generic / 无 payload（M2-B/C 再细分）
+  // response / broadcast / generic / 无 payload
   return 'data';
 }
 
@@ -155,6 +158,13 @@ function stateTextOf(tables: Record<string, StateEntry[]> | undefined): string |
   if (arp && arp.length > 0) {
     const e = arp[0] as { state?: unknown };
     if (typeof e.state === 'string') return e.state;
+  }
+  // M2-C：dns-cache 的 status 是本教学模型的演示状态（valid），不是 DNS 协议标准字段；
+  // 条目为空（未命中）或无 status 时返回 null，交回 note 兜底。
+  const dns = tables['dns-cache'];
+  if (dns && dns.length > 0) {
+    const e = dns[0] as { status?: unknown };
+    if (typeof e.status === 'string') return e.status;
   }
   // mac-table：无「状态」可读，跳过（不能把端口名当状态）
   return null;

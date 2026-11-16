@@ -1,0 +1,372 @@
+{
+  "id": "dns-resolution",
+  "title": "DNS 域名解析",
+  "protocol": "dns",
+  "view": { "kind": "network" },
+  "topology": {
+    "layout": {
+      "view": "network",
+      "note": "三设备链式布局（n=3）：客户端 → IP 网络 → 递归 DNS 服务器；路径 0→2 穿过中间云节点，语义为「查询经过网络到达解析器」"
+    },
+    "participants": [
+      {
+        "id": "c",
+        "label": "用户电脑",
+        "role": "host",
+        "kind": "laptop",
+        "address": { "ip": "192.0.2.10" }
+      },
+      {
+        "id": "net",
+        "label": "IP 网络",
+        "role": "router",
+        "kind": "cloud"
+      },
+      {
+        "id": "dns",
+        "label": "递归 DNS 服务器",
+        "role": "resolver",
+        "kind": "server",
+        "address": { "ip": "192.0.2.53", "port": 53 }
+      }
+    ],
+    "domains": [],
+    "links": [
+      { "from": "c", "to": "net", "medium": "wired" },
+      { "from": "net", "to": "dns", "medium": "wired" }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "first-lookup",
+      "label": "首次解析（缓存未命中）",
+      "initialState": {
+        "c": { "dns-cache": [] }
+      },
+      "steps": [
+        {
+          "id": "s01",
+          "title": "查询本地缓存",
+          "description": "输入网址后，浏览器和操作系统先查本机 DNS 缓存：www.example.com 不在其中，缓存未命中，必须发起一次 DNS 查询。本演示把浏览器缓存与操作系统存根缓存简化为同一个本机缓存——真实设备上它们是两层。",
+          "signal": "查 dns-cache：www.example.com 未命中",
+          "caption": "本机缓存里没有 www.example.com 的记录，客户端只能向配置的递归 DNS 服务器求助。",
+          "events": [
+            {
+              "id": "e01",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": [],
+              "note": "本地缓存未命中（dns-cache 为空）"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "s02",
+          "title": "构造 DNS 查询报文",
+          "description": "客户端构造一条 DNS Query：问题段写入 QNAME=www.example.com、QTYPE=A（要 IPv4 地址）、QCLASS=IN，Opcode=0 标准查询，并置 RD=1 表示期望递归解析；报文交给 UDP 封装，目的端口 53。注意：DNS 主用 UDP 53，但并非永远只用 UDP——响应被截断（TC 位）、区域传送等场景会改用 TCP。",
+          "signal": "构造 Query：QNAME=www.example.com QTYPE=A RD=1",
+          "caption": "查询报文就绪：一条 A 记录问题，期望服务器递归给出最终答案。",
+          "events": [
+            {
+              "id": "e02",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": ["e01"],
+              "note": "Query 已就绪：QNAME=www.example.com QTYPE=A RD=1"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "s03",
+          "title": "发送 DNS Query",
+          "description": "客户端把 Query 发往配置的递归 DNS 服务器：UDP 源端口 51732、目的端口 53，经 IP 网络到达服务器。这是「递归请求」——客户端期望解析器直接给出最终答案；而解析器向上游（根、顶级域、权威服务器）采取的是迭代查询，两者不是同一个概念，本演示不展开上游那一半。",
+          "signal": "A? www.example.com",
+          "caption": "DNS Query 经网络发往递归解析器：UDP 53，问题段一条 A 查询。",
+          "events": [
+            {
+              "id": "e03",
+              "kind": "unicast",
+              "from": "c",
+              "to": { "kind": "device", "id": "dns" },
+              "payload": {
+                "proto": "DNS",
+                "summary": "A? www.example.com",
+                "size": 66,
+                "cat": "query",
+                "fields": {
+                  "ID（事务标识）": "0x8f3a",
+                  "Opcode": "0（标准查询）",
+                  "RD（期望递归）": "1",
+                  "QDCount": "1",
+                  "QNAME": "www.example.com",
+                  "QTYPE": "A（IPv4 地址）",
+                  "QCLASS": "IN"
+                },
+                "layers": [
+                  { "name": "UDP", "keyValues": { "源端口": "51732", "目的端口": "53" } },
+                  { "name": "IPv4", "keyValues": { "源地址": "192.0.2.10", "目的地址": "192.0.2.53" } }
+                ]
+              },
+              "dependsOn": ["e02"],
+              "note": "查询经由网络发往递归解析器"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": {
+            "time": "0.001",
+            "src": "192.0.2.10",
+            "dst": "192.0.2.53",
+            "proto": "DNS",
+            "info": "A? www.example.com（UDP 51732 → 53）",
+            "size": 66,
+            "cat": "query",
+            "eventRef": "e03"
+          }
+        },
+        {
+          "id": "s04",
+          "title": "服务器接收并解析查询",
+          "description": "递归 DNS 服务器收到 Query：UDP 53 交给 DNS 进程，解析问题段得到 QNAME=www.example.com、QTYPE=A。本课程假设服务器已经获得该域名的答案，省略它向根、顶级域和权威服务器的上游查询——真实解析器在缓存未命中时会按迭代方式逐级询问，那是后续课程的扩展。注意区分角色：这台服务器是递归解析器，不是 www.example.com 的权威服务器。",
+          "signal": "收到：A? www.example.com",
+          "caption": "解析器收下查询并读懂问题段——它知道自己要给出的不是一个线索，而是最终答案。",
+          "events": [
+            {
+              "id": "e04",
+              "kind": "process",
+              "from": "dns",
+              "to": { "kind": "device", "id": "dns" },
+              "dependsOn": ["e03"],
+              "note": "解析器收到查询：QNAME=www.example.com QTYPE=A"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "s05",
+          "title": "查得解析结果",
+          "description": "服务器查得 www.example.com 的 A 记录：93.184.216.34，TTL 3600 秒。答案连同 TTL 一起放进响应的 Answer 段——TTL 告诉客户端这条记录可以缓存多久，解析结果与有效期是一个整体，不能只取地址不取 TTL。",
+          "signal": "www.example.com A 93.184.216.34",
+          "caption": "答案在握：A 记录 93.184.216.34，TTL 3600 秒。",
+          "events": [
+            {
+              "id": "e05",
+              "kind": "process",
+              "from": "dns",
+              "to": { "kind": "device", "id": "dns" },
+              "dependsOn": ["e04"],
+              "note": "查得 www.example.com A 93.184.216.34 TTL=3600"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "s06",
+          "title": "返回 DNS Response",
+          "description": "服务器把答案封装成 DNS Response：QR=1 表示响应，Answer 段携带 A 记录 93.184.216.34 和 TTL 3600 秒，沿原路单播返回客户端（UDP 53 → 51732）。响应的 ID 与查询的 ID 相同（0x8f3a），客户端靠它把响应与待处理查询配对；但不能只凭 ID 匹配——ID 只是线索，还要核对 Question 段的 QNAME/QTYPE 是否正是自己问的那个。",
+          "signal": "www.example.com A 93.184.216.34 TTL=3600",
+          "caption": "DNS Response 单播返回：Answer 段一条 A 记录，带着 TTL。",
+          "events": [
+            {
+              "id": "e06",
+              "kind": "unicast",
+              "from": "dns",
+              "to": { "kind": "device", "id": "c" },
+              "payload": {
+                "proto": "DNS",
+                "summary": "www.example.com A 93.184.216.34",
+                "size": 82,
+                "cat": "response",
+                "fields": {
+                  "ID（事务标识）": "0x8f3a",
+                  "QR（响应）": "1",
+                  "Opcode": "0",
+                  "ANCount": "1",
+                  "Answer": [
+                    { "Name": "www.example.com", "Type": "A", "TTL": "3600", "地址": "93.184.216.34" }
+                  ]
+                },
+                "layers": [
+                  { "name": "UDP", "keyValues": { "源端口": "53", "目的端口": "51732" } },
+                  { "name": "IPv4", "keyValues": { "源地址": "192.0.2.53", "目的地址": "192.0.2.10" } }
+                ]
+              },
+              "dependsOn": ["e03"],
+              "note": "应答原路返回，携带 A 记录与 TTL"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": {
+            "time": "0.021",
+            "src": "192.0.2.53",
+            "dst": "192.0.2.10",
+            "proto": "DNS",
+            "info": "www.example.com A 93.184.216.34 TTL=3600（UDP 53 → 51732）",
+            "size": 82,
+            "cat": "response",
+            "eventRef": "e06"
+          }
+        },
+        {
+          "id": "s07",
+          "title": "客户端写入 DNS 缓存",
+          "description": "客户端从 Response 取出 A 记录写入本机 dns-cache：域名 → IP 的映射，TTL = 3600 秒。TTL 不是固定的倒计时——它的含义是「这条资源记录允许被缓存的时间间隔」，由权威侧给定，客户端照单执行。条目状态标记为 valid，表示缓存当前有效：这是本教学模型用来表达「可继续使用」的演示状态，不是 DNS 协议标准定义的缓存状态字段。这条缓存属于客户端存根缓存，与递归 DNS 服务器自己的缓存是两套独立状态；TTL 用尽后条目失效、重新解析，期间客户端不再打扰服务器。",
+          "signal": "缓存写入：www.example.com → 93.184.216.34（TTL 3600）",
+          "caption": "域名到 IP 的映射连同有效期一起写进本机缓存。",
+          "events": [
+            {
+              "id": "e07",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": ["e06"],
+              "note": "www.example.com 已入缓存：valid（有效），TTL = 3600 秒"
+            }
+          ],
+          "stateDeltas": [
+            {
+              "id": "d07",
+              "device": "c",
+              "afterEvent": "e06",
+              "changes": [
+                {
+                  "table": "dns-cache",
+                  "op": "upsert",
+                  "entry": {
+                    "name": "www.example.com",
+                    "type": "A",
+                    "value": "93.184.216.34",
+                    "ttl": "3600",
+                    "status": "valid"
+                  }
+                }
+              ]
+            }
+          ],
+          "traceRow": null
+        },
+        {
+          "id": "s08",
+          "title": "用解析结果访问目标站点",
+          "description": "后续访问 www.example.com 时，客户端先查 dns-cache 命中，直接用 93.184.216.34 封装 IP 数据与目标 Web 服务器通信——那一段是 TCP 课程演示的故事，不属于域名解析。本演示到此为止：域名已经变成了 IP 地址。",
+          "signal": "https://www.example.com → 93.184.216.34",
+          "caption": "域名变成了 IP 地址：后续的站点访问直接用 93.184.216.34。",
+          "events": [
+            {
+              "id": "e08",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": ["e07"],
+              "note": "后续访问：缓存命中，直接用 93.184.216.34"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        }
+      ]
+    },
+    {
+      "id": "cache-hit",
+      "label": "再次访问（缓存命中）",
+      "initialState": {
+        "c": {
+          "dns-cache": [
+            {
+              "name": "www.example.com",
+              "type": "A",
+              "value": "93.184.216.34",
+              "ttl": "3600",
+              "status": "valid"
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "id": "a01",
+          "title": "查询本地缓存",
+          "description": "再次访问 www.example.com：本机 dns-cache 里有这条记录，TTL = 3600 秒尚未用完（status=valid），缓存命中。",
+          "signal": "查 dns-cache：www.example.com 命中",
+          "caption": "缓存里有现成的映射，而且还在有效期内。",
+          "events": [
+            {
+              "id": "ea01",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": [],
+              "note": "缓存命中：www.example.com → 93.184.216.34"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "a02",
+          "title": "跳过 DNS 查询",
+          "description": "命中意味着这一次完全不需要 DNS 查询：没有 Query、没有 Response、没有网络往返。这就是为什么第二次打开同一个网站通常更快——解析成本已经在第一次付过了。",
+          "signal": "跳过 DNS：无报文往返",
+          "caption": "这一次，客户端没有向解析器发任何报文。",
+          "events": [
+            {
+              "id": "ea02",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": ["ea01"],
+              "note": "跳过 DNS 查询：缓存未到期"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "a03",
+          "title": "缓存的代价与边界",
+          "description": "缓存的收益以 TTL 为上限：3600 秒内免费复用，到期后回到主流程的「未命中」路径重新解析。缓存加快了访问，也意味着缓存里的答案可能落后于权威数据——对端更换 IP 后，客户端最长要等 TTL 过期才能拿到新地址。",
+          "signal": "TTL 3600：有效期内免费复用",
+          "caption": "TTL 是缓存的经济账：省下的往返，用「答案可能过期」来换。",
+          "events": [
+            {
+              "id": "ea03",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": ["ea02"],
+              "note": "TTL 3600：有效期内免费复用，到期重新解析"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        },
+        {
+          "id": "a04",
+          "title": "用缓存中的 IP 访问站点",
+          "description": "客户端直接用缓存中的 93.184.216.34 封装 IP 数据，与目标 Web 服务器建立连接——与主流程第 8 步相同，那一段属于 TCP 课程的范围。",
+          "signal": "https://www.example.com → 93.184.216.34",
+          "caption": "和首次访问殊途同归：用解析好的 IP 地址开始通信。",
+          "events": [
+            {
+              "id": "ea04",
+              "kind": "process",
+              "from": "c",
+              "to": { "kind": "device", "id": "c" },
+              "dependsOn": ["ea03"],
+              "note": "与主流程步 8 相同：用 93.184.216.34 通信"
+            }
+          ],
+          "stateDeltas": [],
+          "traceRow": null
+        }
+      ]
+    }
+  ]
+}

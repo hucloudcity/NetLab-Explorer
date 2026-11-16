@@ -101,7 +101,7 @@ const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost',
       });
     }
   }
-  assert.equal(builtRows, 23, 'built artifact carries 23 packet rows (TCP 18 + ARP 5)');
+  assert.equal(builtRows, 25, 'built artifact carries 25 packet rows (TCP 18 + ARP 5 + DNS 2), counted per course below');
 
   let builtStages = 0;
   for (const lesson of data.lessons) {
@@ -120,9 +120,9 @@ const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost',
   assert.equal(tcp.addresses.length, 4, 'TCP topology exposes 4 addresses');
   assert.equal(JSON.stringify(tcp.kinds), JSON.stringify(['laptop', 'router', 'cloud', 'server']), 'TCP exposes per-slot Device.kind');
 
-  // 报文行数按课程累计（不再写死全站 18 行）
+  // 报文行数按课程累计并逐课程独立断言（某课回归破坏不会被算到别的课头上）
   const rowsOf = (lesson) => [...lesson.net.main, ...lesson.net.alternate].filter(Boolean).length;
-  assert.equal(data.lessons.length, 2, 'built artifact contains both courses');
+  assert.equal(data.lessons.length, 3, 'built artifact contains all three courses');
   assert.equal(rowsOf(tcp), 18, 'TCP keeps 18 packet rows (14 main + 4 alternate)');
 
   // M2-B 第二阶段：ARP 三设备渲染回归（A — SW — B 全链路逐帧渲染）
@@ -151,6 +151,53 @@ const RELATION_KINDS = ['request', 'data', 'control', 'check', 'reject', 'lost',
       assert.equal(html.includes('flow-particle iso-travel-dot'), transfer, id + ' only real frames carry a moving dot');
       assert.equal(html.includes('id="active-path"'), frame[6] !== 'local', id + ' local steps draw no path');
       if (transfer) assert.equal(/marker-end="/.test((html.match(/<path id="active-path"[^>]*>/) || [])[0] || ''), true, id + ' transfer frames keep the arrowhead');
+    }
+  }
+
+  // M2-C：DNS 三设备渲染回归（client — cloud — resolver 链式布局，主 8 帧 + 备用 4 帧）
+  {
+    const dns = data.lessons.find((l) => l.id === 'dns');
+    assert(dns, 'built artifact contains the dns lesson');
+    assert.equal(dns.steps.length, 8, 'DNS main scenario has 8 stages');
+    assert.equal(dns.net.main.length, 8, 'DNS trace array keeps one slot per stage');
+    assert.equal(rowsOf(dns), 2, 'DNS carries 2 packet rows (1 query + 1 response), counted separately from TCP/ARP');
+    assert.equal(dns.nodes.length, 3, 'DNS topology has 3 participants');
+    assert.equal(JSON.stringify(dns.kinds), JSON.stringify(['laptop', 'cloud', 'server']), 'DNS exposes per-slot Device.kind (client / IP network / resolver)');
+    assert.equal(JSON.stringify(dns.addresses), JSON.stringify(['192.0.2.10', '', '192.0.2.53:53']), 'DNS shows the client and resolver addresses, none on the cloud');
+    assert(dns.alternate && dns.alternate.steps.length === 4, 'DNS keeps its 4-stage cache-hit alternate scenario');
+    assert.equal(dns.net.alternate.filter(Boolean).length, 0, 'the cache-hit scenario produces zero packet rows (no resolver round trip)');
+
+    const dnsRows = dns.net.main;
+    for (const [i, frame] of dns.steps.entries()) {
+      const id = `dns:main:${i}`;
+      const html = renderToStaticMarkup(React.createElement(MechanismScene, {
+        label: id, nodes: dns.nodes, frame, playing: true, speed: 1, stageKey: id, dark: false,
+        reducedMotion: false, scene: 'network', addresses: dns.addresses, kinds: dns.kinds,
+        packetCat: dnsRows[i] ? dnsRows[i].cat : undefined,
+      }));
+      assert.equal((html.match(/data-node="/g) || []).length, 3, id + ' renders 3 participants');
+      assert.equal((html.match(/net-link-back/g) || []).length, 2, id + ' draws exactly 2 topology links (no ghost link to a 4th slot)');
+      assert(!html.includes('iso-antenna'), id + ' no router glyph in the DNS topology');
+      const transfer = ['request', 'data'].includes(frame[6]);
+      assert.equal(html.includes('flow-particle iso-travel-dot'), transfer, id + ' only real frames carry a moving dot');
+      assert.equal(html.includes('id="active-path"'), frame[6] !== 'local', id + ' local steps draw no path');
+      if (transfer) assert.equal(/marker-end="/.test((html.match(/<path id="active-path"[^>]*>/) || [])[0] || ''), true, id + ' transfer frames keep the arrowhead');
+      const expectedPacket = dnsRows[i] ? dnsRows[i].cat : null;
+      assert.equal(html.includes(`data-packet="${expectedPacket}"`), expectedPacket !== null, id + ' svg data-packet reflects the row category (' + expectedPacket + ')');
+    }
+    // Query 步（帧 2）与 Response 步（帧 5）的粒子类别落位（eventRef 配对由 check-content 在源 JSON 断言）
+    assert(dnsRows[2] && dnsRows[2].cat === 'query', 'step 3 row is the query');
+    assert(dnsRows[5] && dnsRows[5].cat === 'response', 'step 6 row is the response');
+    // 备用场景逐帧渲染（缓存命中：4 帧全 local、零报文行）
+    for (const [i, frame] of dns.alternate.steps.entries()) {
+      const id = `dns:alternate:${i}`;
+      const html = renderToStaticMarkup(React.createElement(MechanismScene, {
+        label: id, nodes: dns.alternate.nodes, frame, playing: true, speed: 1, stageKey: id, dark: false,
+        reducedMotion: false, scene: 'network', addresses: dns.addresses, kinds: dns.kinds,
+      }));
+      assert.equal(frame[6], 'local', id + ' cache-hit steps are all local');
+      assert(!html.includes('id="active-path"'), id + ' local cache-hit steps draw no path');
+      assert(!html.includes('flow-particle iso-travel-dot'), id + ' cache-hit steps produce no network packet');
     }
   }
 

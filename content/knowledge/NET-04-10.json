@@ -1,0 +1,67 @@
+{
+  "id": "NET-04-10",
+  "title": "DNS 域名解析：递归请求、缓存命中与 UDP 53",
+  "categoryId": "M04",
+  "level": "basic",
+  "summary": "浏览器输入域名后，客户端先查本机 DNS 缓存；未命中就向配置的递归解析器发 UDP Query（A? www.example.com），解析器返回携带 A 记录与 TTL 的 Response，客户端把映射写入本机缓存，后续访问在 TTL 内直接复用。",
+  "what": "DNS（Domain Name System）把域名翻译成 IP 地址。客户端的存根解析器先查本机缓存；未命中则以递归方式（RD=1）向配置的递归解析器发送 DNS Query——主用 UDP 53，问题段一条 A 记录查询。解析器给出最终答案：响应里 QR=1，Answer 段携带 A 记录（93.184.216.34）与 TTL（3600 秒）。客户端把「域名 → IP + TTL」写入本机 dns-cache，TTL 内的后续访问不再产生任何 DNS 报文。",
+  "why": "应用层只认识域名，网络层只认识 IP——中间缺一个翻译步骤。DNS 用「缓存优先、未命中才问」的结构，把翻译成本摊薄到 TTL 生命周期里：第一次访问付出一次往返，之后的访问免费复用。",
+  "principle": "客户端对递归解析器发的是递归请求（期望最终答案），解析器向上游根/TLD/权威服务器采取的是迭代查询，两者是不同的问法；本机存根缓存与解析器缓存是两套独立状态；UDP 53 是常态而非全部，截断与区域传送会改用 TCP。",
+  "practicalScenario": "打开一个新网站时抓包，会看到 UDP 53 上一问一答：Query 携带 QNAME=www.example.com、QTYPE=A，Response 的 Answer 段给出 A 记录和 TTL。排障时先看本机缓存是否命中（ipconfig /displaydns），再看解析器返回的 RCODE（NXDOMAIN 说明域名不存在），最后才怀疑上游链路——顺序反了会把问题找错地方。",
+  "commonProblems": [
+    "混淆递归与迭代：客户端对解析器的请求是递归（RD=1，要最终答案），解析器对根/顶级域/权威服务器是迭代（逐级问线索）；把两者说成同一种查询是最常见的概念错误。",
+    "把客户端 DNS 缓存与解析器缓存混为一谈：前者在本机、服务封装前的翻译，后者在递归服务器上、服务整个区域的解析加速；TTL 各自独立计时，谁到期谁重新解析。",
+    "把 DNS 简化为永远用 UDP：日常查询主用 UDP 53 没错，但响应超过报文容纳上限时 TC 位会置位并转 TCP 重试，区域传送用 TCP，DoH/DoT/DoQ 则干脆换了承载协议。"
+  ],
+  "packetStructure": {
+    "description": "DNS 报文由 12 字节固定头部、问题段、回答/授权/附加段组成；问题段与资源记录为变长，QNAME 以「长度字节 + 标签」序列编码。本演示展示 Header、Question 与 Answer 的关键字段。",
+    "layout": [
+      { "field": "ID", "bits": "16", "note": "报文标识，响应原样带回以便配对" },
+      { "field": "Flags", "bits": "16", "note": "QR/Opcode/AA/TC/RD/RA/RCODE 等；查询 QR=0 RD=1，响应 QR=1" },
+      { "field": "QDCOUNT", "bits": "16", "note": "问题段条数，本演示为 1" },
+      { "field": "ANCOUNT", "bits": "16", "note": "回答段条数，响应为 1，查询为 0" },
+      { "field": "Question: QNAME", "bits": "变长", "note": "待解析域名，按「长度 + 标签」编码" },
+      { "field": "Question: QTYPE / QCLASS", "bits": "16 + 16", "note": "A = IPv4 地址记录；IN = Internet 类" },
+      { "field": "Answer: Name / Type / Class", "bits": "变长 + 16 + 16", "note": "回答的域名与记录类型，Type=A" },
+      { "field": "Answer: TTL", "bits": "32", "note": "该记录可缓存的秒数，本演示 3600" },
+      { "field": "Answer: RDLENGTH / RDATA", "bits": "16 + 变长", "note": "A 记录的 RDATA 为 4 字节 IPv4 地址" }
+    ]
+  },
+  "relatedKnowledge": [],
+  "sourceRefs": [
+    {
+      "sourceId": "rfc-1034",
+      "purpose": "核对 DNS 的概念模型：递归与迭代查询的语义区分、解析器职责与缓存的层次结构",
+      "sections": ["2.3", "4.3.1", "5.1", "5.3.1"],
+      "checkedAt": "2026-11-16",
+      "verificationNote": "RFC 1034 §2.3 给出递归与迭代解析的基本假设（迭代方式更适合数据报式访问）；§4.3.1 定义查询处理与递归/迭代行为（RD/RA 位协商）；§5.1 说明 Resolver 的职责及「用缓存回答大多数请求」的作用；§5.3.1 专门讨论 Stub Resolver。本课程据此把「客户端→递归解析器」与「解析器→上游」明确拆分为两段，并省略后一段。"
+    },
+    {
+      "sourceId": "rfc-1035",
+      "purpose": "核对 DNS 报文格式：Header 各字段（含 ID 配对）、Question 段 QNAME/QTYPE/QCLASS、Answer 资源记录与 TTL 单位、UDP/TCP 承载条件与尺寸限制",
+      "sections": ["4.1", "4.1.3", "4.2.1", "2.3.4"],
+      "checkedAt": "2026-11-16",
+      "verificationNote": "RFC 1035 §4.1 定义报文头部（ID/Flags/各计数）与 Question/Answer 段格式；§4.1.3 明确 TTL 是 32 位无符号整数、以秒为单位指定资源记录可被缓存的时间间隔（TTL 的秒单位定义在此，不在 §2.3.4）；§4.2.1 规定 UDP 53 为主承载、超长截断置 TC 转 TCP；§2.3.4 给出尺寸限制：域名不超过 255 字节、传统 DNS UDP 消息不超过 512 字节（EDNS(0) 之后消息可更大，此限制仅指传统 UDP 消息）。注意 TTL 的原始表述在 RFC 1035 内部不一致：§3.2.1 写成 32 位「有符号」整数（只允许正值），§4.1.3 则定义为 32 位「无符号」整数——后经 RFC 2181 §8 澄清、再由 RFC 8767 §4 更新，详见对应条目。示例报文大小（66/82 B）为教学取值，不对应真实抓包。"
+    },
+    {
+      "sourceId": "rfc-2181",
+      "purpose": "核对 TTL 字段的标准沿革：RFC 1035 内部有符号/无符号表述不一致后的第一次澄清——无符号解释与取值范围",
+      "sections": ["8"],
+      "checkedAt": "2026-11-16",
+      "verificationNote": "RFC 2181 §8 澄清：TTL 应作为无符号数解释，取值范围 0 至 2^31−1（2147483647），传输时编码进低 31 位、最高位必须为 0；收到最高位为 1 的 TTL 值时应将其按 0 处理（该规则后来被 RFC 8767 §4 更新为按正值处理，不再是现行规则）。零值 TTL 表示记录只能用于当前事务、不应缓存（与 RFC 1035 §4.1.3 一致）。"
+    },
+    {
+      "sourceId": "rfc-8767",
+      "purpose": "核对 TTL 的现行标准语义：推荐上限、最高位处理规则的变更，以及递归解析器的 Serve-Stale 行为边界",
+      "sections": ["4", "5", "6"],
+      "checkedAt": "2026-11-16",
+      "verificationNote": "RFC 8767（2020，更新 RFC 1034/1035）§4（Standards Action）修订 TTL 定义并规范 Serve-Stale 的标准行为：①值 SHOULD 被限制在数天到数周的量级，推荐上限 604800 秒（7 天）——这是对主要解析器现行实践的推荐，不是强制协议最大值；②变更 RFC 2181 §8 的最高位规则：最高位为 1 的 TTL 现在按正值解释（再按上限截断），不再按 0 处理；③零值语义继续保留：TTL 为 0 的记录只能用于当前事务、不应缓存，且不可用于 stale 回退（因为根本不入缓存；§7 Implementation Caveats 另行确认此点）；④Serve-Stale：允许递归解析器在无法从权威侧刷新时向客户端返回已过期的记录（解析器的可用性应急机制，不是所有 DNS 客户端可无条件使用过期缓存）；返回过期记录时，每条过期记录的 TTL MUST 大于 0，推荐值 30 秒。§5（Example Method）给出示例实现：maximum stale timer 与查询解析过程无关、属于缓存管理，它定义记录 TTL 过期后在缓存中继续保留的时长——该计时器应可配置，建议值为 1 到 3 天（suggested，不是强制协议要求）。注意区分三个时间概念：缓存记录的原始 TTL（如本演示 3600 秒）、§5 maximum stale timer 控制的过期记录保留时长（建议 1–3 天，与 604800 秒的 7 天 TTL 推荐上限是两个不同参数，不要混为一谈）、以及返回过期记录时响应报文中的 TTL（MUST>0，推荐 30 秒）。§6（Implementation Considerations）讨论计时器选择的权衡：更短（甚至不足一天）的保留时长足以应对绝大多数故障，更长（最长约一周）则为监控系统留出发现与恢复时间。"
+    }
+  ],
+  "demoRefs": ["dns-resolution"],
+  "accessLevel": "free",
+  "status": "published",
+  "contentState": "original",
+  "createdAt": "2026-11-16",
+  "updatedAt": "2026-11-16"
+}

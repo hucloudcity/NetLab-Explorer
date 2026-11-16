@@ -24,6 +24,54 @@
     "addedAt": "2026-11-16"
   },
   {
+    "sourceId": "rfc-1034",
+    "type": "rfc",
+    "name": "IETF · RFC 1034 (Domain Names - Concepts and Facilities)",
+    "description": "DNS 的概念规范：递归与迭代查询的职责划分、解析器与缓存的层次结构。",
+    "author": "P. Mockapetris",
+    "version": "RFC 1034",
+    "url": "https://www.rfc-editor.org/rfc/rfc1034",
+    "licenseStatus": "public-standard",
+    "licenseNote": "IETF 公开标准，可引用概念定义与章节编号；不复刻原文段落。",
+    "addedAt": "2026-11-16"
+  },
+  {
+    "sourceId": "rfc-1035",
+    "type": "rfc",
+    "name": "IETF · RFC 1035 (Domain Names - Implementation and Specification)",
+    "description": "DNS 的实现规范：报文格式（Header/Question/Answer）、资源记录与 TTL、UDP 53 与 TCP 承载条件。",
+    "author": "P. Mockapetris",
+    "version": "RFC 1035",
+    "url": "https://www.rfc-editor.org/rfc/rfc1035",
+    "licenseStatus": "public-standard",
+    "licenseNote": "IETF 公开标准，可引用报文格式与处理语义；不复刻原文段落，示例报文大小为教学取值。",
+    "addedAt": "2026-11-16"
+  },
+  {
+    "sourceId": "rfc-2181",
+    "type": "rfc",
+    "name": "IETF · RFC 2181 (Clarifications to the DNS Specification)",
+    "description": "对 DNS 规范的澄清：TTL 字段的无符号解释与取值范围（§8）、零值语义等实现层面的澄清。",
+    "author": "R. Elz, R. Bush",
+    "version": "RFC 2181",
+    "url": "https://www.rfc-editor.org/rfc/rfc2181",
+    "licenseStatus": "public-standard",
+    "licenseNote": "IETF 公开标准，可引用章节编号与语义；不复刻原文段落。",
+    "addedAt": "2026-11-16"
+  },
+  {
+    "sourceId": "rfc-8767",
+    "type": "rfc",
+    "name": "IETF · RFC 8767 (Serving Stale Data to Improve DNS Resiliency)",
+    "description": "更新 RFC 1034/1035 中 TTL 的定义：推荐 7 天上限、最高位按正值处理，并规范递归解析器的 Serve-Stale（过期数据应急使用）行为。",
+    "author": "D. Lawrence, W. Kumari, P. Sood",
+    "version": "RFC 8767",
+    "url": "https://www.rfc-editor.org/rfc/rfc8767",
+    "licenseStatus": "public-standard",
+    "licenseNote": "IETF 公开标准，可引用章节编号、推荐值与语义；不复刻原文段落。",
+    "addedAt": "2026-11-16"
+  },
+  {
     "sourceId": "csapp-3e",
     "type": "textbook",
     "name": "CMU 15-213 · Computer Systems",

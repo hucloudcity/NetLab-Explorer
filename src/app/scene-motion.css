@@ -201,12 +201,18 @@ body.dark .systems-iso svg[data-packet="fin"] { --packet: #94a3b8; }
 body.dark .cat-broadcast { --kind-color: #7aa2f7; }
 body.dark .cat-response { --kind-color: #2dd4bf; }
 body.dark .cat-generic { --kind-color: #9ca3af; }
+/* M2-C：DNS Query 类（indigo；应答继续沿用 cat-response） */
+.cat-query { --kind-color: #4f46e5; }
+body.dark .cat-query { --kind-color: #818cf8; }
 
 .systems-iso svg[data-packet="broadcast"] { --packet: #2563eb; }
 .systems-iso svg[data-packet="response"] { --packet: #0d9488; }
 .systems-iso svg[data-packet="generic"] { --packet: #6b7280; }
 body.dark .systems-iso svg[data-packet="broadcast"] { --packet: #7aa2f7; }
 body.dark .systems-iso svg[data-packet="response"] { --packet: #2dd4bf; }
+/* M2-C：DNS Query 报文动画粒子（indigo） */
+.systems-iso svg[data-packet="query"] { --packet: #4f46e5; }
+body.dark .systems-iso svg[data-packet="query"] { --packet: #818cf8; }
 body.dark .systems-iso svg[data-packet="generic"] { --packet: #9ca3af; }
 
 /* ---------- 数据包流表（PE 风格七列） ---------- */

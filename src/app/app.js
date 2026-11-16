@@ -27,7 +27,7 @@ const RELATIONS={request:'请求传递',data:'数据传递',control:'控制关�
 // 缺省只影响「机制/扩展阅读」区块，不影响课程本身与步骤时间线（data.js 时代的单课数据不受影响）。
 const EMPTY_DETAILS={sections:[],readings:[],sources:[],foundation:''};
 const detailsOf=id=>MECHANISM_DETAILS[id]||EMPTY_DETAILS;
-const CATS={hand:'握手和 ACK',cdata:'来自笔记本电脑的数据',sdata:'来自服务器的数据',fin:'关闭（FIN）',lost:'传递丢失',broadcast:'广播帧',response:'应答',generic:'其他报文'};
+const CATS={hand:'握手和 ACK',cdata:'来自笔记本电脑的数据',sdata:'来自服务器的数据',fin:'关闭（FIN）',lost:'传递丢失',broadcast:'广播帧',response:'应答',query:'DNS 查询',generic:'其他报文'};
 function relationText(s){const ns=nodes();if(s[6]==='local')return ns[s[1]]+' · 内部操作';if(s[6]==='compare')return ns[s[1]]+' ｜ '+ns[s[2]]+' · 对照';if(s[6]==='lost')return ns[s[1]]+' ⇢ × · 未到达 '+ns[s[2]];return ns[s[1]]+(s[6]==='request'||s[6]==='data'?' → ':' ⇢ ')+ns[s[2]]}
 function currentFrame(){return frames()[step]}
 function accent(){const g=GROUPS[current.group];return dark?(g.dark||['#82adff','#63cec4','#b79aeb'][current.group]):g.color}

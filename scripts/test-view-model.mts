@@ -138,7 +138,8 @@ eq(relationOf(ev({ from: 'b', to: { kind: 'device', id: 'a' } }), 'a'), 'data', 
 eq(relationOf(ev({ payload: { proto: 'TCP', summary: 'FIN, ACK Seq=79 Ack=1', cat: 'fin' } }), 'a'), 'request', 'C5c fin 发起方 → request');
 eq(relationOf(ev({ from: 'b', to: { kind: 'device', id: 'a' }, payload: { proto: 'TCP', summary: 'FIN seq=w', cat: 'fin' } }), 'a'), 'request', 'C5d fin 非发起方 → request（关闭请求与谁先开口无关）');
 eq(relationOf(ev({ from: 'b', to: { kind: 'device', id: 'a' }, payload: { proto: 'TCP', summary: 'ACK u+1', cat: 'fin' } }), 'a'), 'data', 'C5e 关闭阶段的纯 ACK 仍是 data（cat=fin 只是配色分组）');
-eq(relationOf(ev({ payload: { proto: 'TCP', summary: 'x', cat: 'query' } }), 'a'), 'data', 'C6 未知类别 → data（M2-B/C 再细分）');
+eq(relationOf(ev({ payload: { proto: 'DNS', summary: 'A? www.example.com', cat: 'query' } }), 'a'), 'request', 'C6a query → request（M2-C：DNS 查询是请求语义）');
+eq(relationOf(ev({ payload: { proto: 'DNS', summary: 'A 93.184.216.34', cat: 'response' } }), 'a'), 'data', 'C6b 未知/未细分类别仍落 data（原 C6 语义：默认分支保持 data，response 与 ARP Reply 先例一致）');
 
 /* ================= D 表格（7） ================= */
 eq(lesson.net.main.length, 14, 'D1 主流程 14 行');

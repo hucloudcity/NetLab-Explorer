@@ -1,6 +1,6 @@
 {
   "$schema-note": "样例数据 · DNS 域名解析。验证 5 设备多跳链、递归位语义（末次查询关闭 RD）、通用状态表 dns-cache、缓存命中变体。",
-  "id": "dns-resolution",
+  "id": "dns-resolution-sample",
   "title": "DNS 域名解析",
   "protocol": "dns",
   "view": { "kind": "network" },

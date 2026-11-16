@@ -25,6 +25,14 @@
       "hash": "arp",
       "titleEn": "ARP ADDRESS RESOLUTION",
       "order": 2
+    },
+    {
+      "demoId": "dns-resolution",
+      "knowledgeId": "NET-04-10",
+      "groupId": "network",
+      "hash": "dns",
+      "titleEn": "DNS NAME RESOLUTION",
+      "order": 3
     }
   ]
 }
